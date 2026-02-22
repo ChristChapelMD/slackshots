@@ -118,15 +118,34 @@ export async function getFailedFilesBySession(uploadSessionID: string) {
 
 export async function getFilesForUser(
   userId: mongoose.Types.ObjectId,
+  workspaceId?: mongoose.Types.ObjectId,
   page: number = 1,
   limit: number = 16,
-) {
+  fileTypes?: string[],
+): Promise<{ files: File[]; total: number }> {
   await dbConnect();
 
-  return await File.find({ userId, status: FileRecordStatus.UPLOADED })
-    .sort({ createdAt: -1 })
-    .skip((page - 1) * limit)
-    .limit(limit);
+  const filter: Record<string, unknown> = {
+    userId,
+    status: FileRecordStatus.UPLOADED,
+  };
+
+  if (workspaceId) {
+    filter.workspaceId = workspaceId;
+  }
+
+  if (fileTypes?.length) {
+    filter.fileType = { $in: fileTypes };
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [files, total] = await Promise.all([
+    File.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    File.countDocuments(filter),
+  ]);
+
+  return { files, total };
 }
 
 export async function getFilesForWorkspace(
@@ -167,6 +186,24 @@ export async function bulkUpdateFilesStatus(
     { _id: { $in: fileIds } },
     { status, ...details },
   );
+}
+
+export async function deleteFilesForUserWorkspace(
+  fileIds: mongoose.Types.ObjectId[],
+  userId: mongoose.Types.ObjectId,
+  workspaceId: mongoose.Types.ObjectId,
+): Promise<number> {
+  await dbConnect();
+
+  if (!fileIds.length) return 0;
+
+  const result = await File.deleteMany({
+    _id: { $in: fileIds },
+    userId,
+    workspaceId,
+  });
+
+  return result.deletedCount ?? 0;
 }
 
 export const anonymizeFileRecord = async (

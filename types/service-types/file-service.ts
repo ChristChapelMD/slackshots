@@ -57,4 +57,7 @@ export interface FetchFilesResponse {
   files: FileItem[];
   nextCursor?: string | number;
   hasMore: boolean;
+  total?: number;
+  page?: number;
+  limit?: number;
 }

@@ -29,7 +29,13 @@ export async function fetchFiles(
 
   return {
     files: data.files || [],
-    hasMore: data.files?.length > 0,
+    hasMore:
+      typeof data.hasMore === "boolean"
+        ? data.hasMore
+        : (data.files?.length ?? 0) > 0,
+    total: data.total,
+    page: data.page,
+    limit: data.limit,
   };
 }
 
@@ -86,26 +92,9 @@ export async function downloadMultipleFiles(files: FileItem[]): Promise<void> {
   if (!files || files.length === 0)
     throw new Error("No files selected to download");
 
-  const response = await fetch("/api/files/download", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ files }),
-  });
-
-  if (!response.ok)
-    throw new Error(`Failed to download files: ${response.status}`);
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-
-  a.href = url;
-  a.download = `ss_files_${new Date().toISOString().split("T")[0]}.zip`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
+  // Fallback: trigger individual downloads for each file
+  for (const file of files) {
+    // eslint-disable-next-line no-await-in-loop
+    await downloadSingleFile(file);
+  }
 }
