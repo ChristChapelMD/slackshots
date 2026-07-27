@@ -1,75 +1,46 @@
 import Image from "next/image";
 import { Card } from "@heroui/card";
-import { Divider } from "@heroui/divider";
-import { Link as HeroLink } from "@heroui/link";
-import NextLink from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 
 import SlackShotsLogo from "@/public/SSLOGO_NOBG.png";
-import SignInForm from "@/components/auth/sign-in-form";
 import { SlackAuthButton } from "@/components/auth/slack-auth-button";
-import { auth } from "@/lib/auth";
+import { getServerAuthSession } from "@/lib/auth/server-session";
 
 export default async function SignInPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getServerAuthSession(await headers());
 
   if (session) {
     redirect("/dashboard");
   }
 
   return (
-    <Card className="w-full max-w-sm rounded-xl drop-shadow-lg p-8 gap-1 text-foreground font-semibold border border-zinc-400/25 group relative flex shadow-[inset_0_-8px_10px_#8fdfff1f] whitespace-nowrap">
+    <Card className="relative flex w-full max-w-sm flex-col gap-6 overflow-hidden rounded-2xl border border-zinc-400/25 p-8 shadow-[inset_0_-8px_10px_#8fdfff1f] drop-shadow-lg">
       <Image
-        alt="SlackShots Logo"
-        className="absolute -top-16 -right-16 blur-3xl opacity-20 pointer-events-none"
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-16 -top-16 opacity-20 blur-3xl"
         height={400}
         src={SlackShotsLogo}
         width={400}
       />
-
-      <div className="mb-8 text-center relative z-10">
-        <HeroLink as={NextLink} href="/">
-          <Image
-            alt="SlackShots Logo"
-            className="mx-auto pointer-events-none"
-            height={80}
-            src={SlackShotsLogo}
-            width={80}
-          />
-        </HeroLink>
-        <h1 className="text-3xl font-extrabold">Welcome back</h1>
-        <p className="mt-2 text-sm">Sign in with Slack or your email</p>
+      <div className="relative z-10 text-center">
+        <Image
+          priority
+          alt="SlackShots"
+          className="pointer-events-none mx-auto"
+          height={80}
+          src={SlackShotsLogo}
+          width={80}
+        />
+        <h1 className="mt-3 text-3xl font-extrabold">Welcome to SlackShots</h1>
+        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+          Sign in with a member account from your Slack workspace.
+        </p>
       </div>
-
-      <SlackAuthButton />
-
-      <div className="my-6 flex items-center">
-        <Divider className="flex-1" />
-        <span className="mx-3 text-sm text-zinc-400">or</span>
-        <Divider className="flex-1" />
+      <div className="relative z-10">
+        <SlackAuthButton />
       </div>
-
-      <SignInForm />
-
-      <p className="mt-6 text-center text-sm text-zinc-500">
-        Don’t have an account?{" "}
-        <NextLink
-          className="text-primary hover:text-primary-500 underline font-medium"
-          href="/sign-up"
-        >
-          Sign up
-        </NextLink>
-      </p>
-      <p className="text-center text-sm text-zinc-500">
-        Forgot your password?{" "}
-        <NextLink
-          className="text-primary hover:text-primary-500 underline font-medium"
-          href="/reset-password"
-        >
-          Reset password
-        </NextLink>
-      </p>
     </Card>
   );
 }

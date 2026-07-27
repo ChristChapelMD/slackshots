@@ -6,13 +6,11 @@ import { memo, useMemo, useCallback } from "react";
 
 import { TextureContainer } from "@/components/ui/texture-container";
 import { useDrawerStore } from "@/stores/drawer-store";
-import { useUploadProcessStore } from "@/stores/upload-process-store";
 import { useUploadFormStore } from "@/stores/upload-form-store";
 
 export const MessageComment = memo(function MessageComment() {
   const uploadFormState = useUploadFormStore((state) => state.formState);
   const updateUploadForm = useUploadFormStore((state) => state.updateForm);
-  const isUploading = useUploadProcessStore((state) => state.isUploading);
   const isAnimating = useDrawerStore((state) => state.isAnimating);
   const isOpen = useDrawerStore((state) => state.isOpen);
 
@@ -21,10 +19,7 @@ export const MessageComment = memo(function MessageComment() {
     () => isOpen || isAnimating,
     [isOpen, isAnimating],
   );
-  const isDisabled = useMemo(
-    () => isDrawerOpen || isUploading,
-    [isDrawerOpen, isUploading],
-  );
+  const isDisabled = useMemo(() => isDrawerOpen, [isDrawerOpen]);
 
   // Memoize the onChange handler
   const handleCommentChange = useCallback(
@@ -44,7 +39,7 @@ export const MessageComment = memo(function MessageComment() {
         "data-[focus=true]:bg-white data-[focus=true]:dark:bg-zinc-900 " +
         "border-none",
       input:
-        "bg-transparent text-zinc-800 dark:text-zinc-200" +
+        "bg-transparent text-zinc-800 dark:text-zinc-200 caret-zinc-900 dark:caret-white " +
         "placeholder:text-zinc-500 dark:placeholder:text-zinc-400",
       label: "text-zinc-500 dark:text-zinc-400 font-medium mb-1",
     }),

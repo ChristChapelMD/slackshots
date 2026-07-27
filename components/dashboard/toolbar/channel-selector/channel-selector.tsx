@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { Select, SelectItem } from "@heroui/select";
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
@@ -10,20 +11,31 @@ import { useChannels } from "@/hooks/use-channels";
 import { useAddBot } from "@/hooks/use-add-bot";
 import { TextureContainer } from "@/components/ui/texture-container";
 import { useUploadFormStore } from "@/stores/upload-form-store";
-import { useUploadProcessStore } from "@/stores/upload-process-store";
 
 export function ChannelSelector() {
   const { data: channelOptions = [], isLoading } = useChannels();
-  const { mutate: addBotToChannel, isPending: isAddingBot } = useAddBot();
+  const {
+    mutate: addBotToChannel,
+    isPending: isAddingBot,
+    variables: joiningChannelId,
+  } = useAddBot();
 
   const uploadFormState = useUploadFormStore((state) => state.formState);
   const updateUploadForm = useUploadFormStore((state) => state.updateForm);
-  const isUploading = useUploadProcessStore((state) => state.isUploading);
   const isAnimating = useDrawerStore((state) => state.isAnimating);
   const isOpen = useDrawerStore((state) => state.isOpen);
 
   const isDrawerOpen = isOpen || isAnimating;
-  const isDisabled = isDrawerOpen || isUploading;
+  const isDisabled = isDrawerOpen;
+  const disabledChannelKeys = useMemo(
+    () =>
+      new Set(
+        channelOptions
+          .filter((channel) => !channel.isMember)
+          .map((channel) => channel.value),
+      ),
+    [channelOptions],
+  );
 
   return (
     <TextureContainer className="w-full">
@@ -40,16 +52,14 @@ export function ChannelSelector() {
           value: "flex items-center",
           selectorIcon: "h-5 w-5",
         }}
-        disabledKeys={channelOptions
-          .filter((channel) => !channel.isMember)
-          .map((channel) => channel.value)}
+        disabledKeys={disabledChannelKeys}
         isDisabled={isDisabled}
         isLoading={isLoading}
         items={channelOptions}
         label="Select a channel"
         listboxProps={{
           itemClasses: {
-            base: "text-zinc-800 dark:text-zinc-200 data-[hover=true]:bg-zinc-100 data-[hover=true]:dark:bg-zinc-800 px-4 h-[48px] flex items-center",
+            base: "text-zinc-800 dark:text-zinc-200 data-[hover=true]:bg-zinc-100 data-[hover=true]:dark:bg-zinc-800 data-[disabled=true]:!pointer-events-auto data-[disabled=true]:opacity-60 px-4 h-[48px] flex items-center",
             selectedIcon: "text-green-500 dark:text-green-400",
           },
         }}
@@ -64,8 +74,13 @@ export function ChannelSelector() {
         selectedKeys={uploadFormState.channel ? [uploadFormState.channel] : []}
         onSelectionChange={(keys) => {
           const selected = Array.from(keys)[0] as string;
+          const channel = channelOptions.find(
+            (option) => option.value === selected,
+          );
 
-          updateUploadForm({ channel: selected });
+          if (channel?.isMember) {
+            updateUploadForm({ channel: selected });
+          }
         }}
       >
         {(channel) => (
@@ -76,15 +91,21 @@ export function ChannelSelector() {
                 <Tooltip content="Add SlackShots to this channel">
                   <Button
                     isIconOnly
+                    aria-label={`Add SlackShots to ${channel.label}`}
+                    className="h-6 min-w-6 w-6 p-0"
                     isLoading={
-                      isAddingBot && channel.value === uploadFormState.channel
+                      isAddingBot && joiningChannelId === channel.value
                     }
                     size="sm"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
                     onPress={() => {
                       addBotToChannel(channel.value);
                     }}
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="h-3 w-3" />
                   </Button>
                 </Tooltip>
               )

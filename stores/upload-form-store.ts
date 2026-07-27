@@ -16,6 +16,7 @@ interface UploadFormStore {
   setFiles: (files: FileList | null) => void;
   setFileSelection: (selection: string) => void;
   resetForm: () => void;
+  resetAfterQueue: () => void;
 }
 
 const initialState: UploadFormState = {
@@ -50,4 +51,14 @@ export const useUploadFormStore = create<UploadFormStore>((set) => ({
     set({
       formState: { ...initialState, uploadSessionId: crypto.randomUUID() },
     }),
+  resetAfterQueue: () =>
+    set((state) => ({
+      formState: {
+        ...state.formState,
+        files: null,
+        comment: "",
+        uploadSessionId: crypto.randomUUID(),
+        fileSelection: "",
+      },
+    })),
 }));

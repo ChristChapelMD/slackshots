@@ -7,6 +7,18 @@ export interface FileItem {
     provider: string;
     providerFileId: string;
   }[];
+  uploadedBy?: {
+    userId: string;
+    name: string;
+    email?: string;
+    image?: string;
+  };
+  createdAt?: string;
+  metadata?: {
+    width?: number;
+    height?: number;
+    [key: string]: unknown;
+  };
 }
 
 export interface FileMetadata extends FileItem {
@@ -55,9 +67,7 @@ export interface FileServiceInterface {
 
 export interface FetchFilesResponse {
   files: FileItem[];
-  nextCursor?: string | number;
+  nextCursor?: string | null;
   hasMore: boolean;
-  total?: number;
-  page?: number;
   limit?: number;
 }

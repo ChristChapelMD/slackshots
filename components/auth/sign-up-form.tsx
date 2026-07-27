@@ -76,7 +76,7 @@ export default function SignUpForm() {
       email,
       password,
       name: `${firstName} ${lastName}`,
-      callbackURL: `${process.env.NEXT_PUBLIC_APP_URL}/sign-in`,
+      callbackURL: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
     });
   };
 

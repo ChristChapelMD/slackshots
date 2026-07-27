@@ -1,30 +1,10 @@
-import { UserWorkspace, UserWorkspaceDTO } from "../models/userworkspace.model";
-import { WorkspaceDTO } from "../models/workspace.model";
+import {
+  UserWorkspace,
+  UserWorkspaceDTO,
+  WorkspaceRole,
+} from "../models/userworkspace.model";
 
 import dbConnect from "@/services/api/db/connection";
-
-type RoleEnum = "member" | "owner";
-
-export async function createOrUpdateUserWorkspaceRelation(
-  userId: string,
-  workspaceId: string,
-  role: RoleEnum = "member",
-): Promise<UserWorkspaceDTO | null> {
-  await dbConnect();
-
-  try {
-    const userWorkspace = await UserWorkspace.findOneAndUpdate(
-      { workspaceId, userId },
-      { $set: { workspaceId, userId, role } },
-      { new: true, upsert: true },
-    ).lean<UserWorkspaceDTO>();
-
-    return userWorkspace;
-  } catch (error) {
-    console.error("Failed to create or update user-workspace relation:", error);
-    throw new Error("User-Workspace Relation creation/update failed");
-  }
-}
 
 export async function getUserWorkspaceRelation(
   userId: string,
@@ -32,68 +12,35 @@ export async function getUserWorkspaceRelation(
 ): Promise<UserWorkspaceDTO | null> {
   await dbConnect();
 
-  try {
-    const userWorkspace = await UserWorkspace.findOne({
-      userId,
-      workspaceId,
-    }).lean<UserWorkspaceDTO>();
-
-    return userWorkspace;
-  } catch (error) {
-    console.error("Failed to get user-workspace relation:", error);
-    throw new Error("User-Workspace Relation retrieval failed");
-  }
+  return UserWorkspace.findOne({
+    userId,
+    workspaceId,
+  }).lean<UserWorkspaceDTO>();
 }
 
-export async function getAllUserWorkspaces(
-  userId: string,
-): Promise<(WorkspaceDTO & { role: RoleEnum })[]> {
+export async function createOrUpdateUserWorkspaceRelation({
+  userId,
+  workspaceId,
+  slackUserId,
+  role = "member",
+}: {
+  userId: string;
+  workspaceId: string;
+  slackUserId: string;
+  role?: WorkspaceRole;
+}): Promise<UserWorkspaceDTO | null> {
   await dbConnect();
 
-  try {
-    const workspacesWithRoles = await UserWorkspace.aggregate([
-      { $match: { userId } },
-      {
-        $lookup: {
-          from: "workspace",
-          localField: "workspaceId",
-          foreignField: "workspaceId",
-          as: "workspace",
-        },
+  return UserWorkspace.findOneAndUpdate(
+    { userId, workspaceId },
+    {
+      $set: {
+        slackUserId,
+        role,
+        verifiedAt: new Date(),
       },
-      { $unwind: "$workspace" },
-      {
-        $project: {
-          workspaceId: "$workspace.workspaceId",
-          name: "$workspace.name",
-          botToken: "$workspace.botToken",
-          botUserId: "$workspace.botUserId",
-          scope: "$workspace.scope",
-          role: "$role",
-        },
-      },
-    ]);
-
-    return workspacesWithRoles as (WorkspaceDTO & { role: RoleEnum })[];
-  } catch (error) {
-    console.error("Failed to get all user-workspace relations:", error);
-    throw new Error("All User-Workspace Relation retrieval failed");
-  }
-}
-
-export async function removeUserFromWorkspace(
-  userId: string,
-  workspaceId: string,
-): Promise<void> {
-  await dbConnect();
-
-  try {
-    await UserWorkspace.deleteOne({
-      userId,
-      workspaceId,
-    });
-  } catch (error) {
-    console.error("Failed to remove user from workspace:", error);
-    throw new Error("User-Workspace Relation removal failed");
-  }
+      $setOnInsert: { userId, workspaceId },
+    },
+    { new: true, upsert: true },
+  ).lean<UserWorkspaceDTO>();
 }

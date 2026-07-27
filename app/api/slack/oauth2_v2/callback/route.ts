@@ -1,30 +1,50 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 import { SlackOAuthResponse } from "@/types/slack";
-import { auth } from "@/lib/auth";
-import { api } from "@/services/api";
+import {
+  AuthorizationError,
+  requireSession,
+} from "@/services/api/auth/workspace-access";
+import { createOrUpdateWorkspace } from "@/services/api/db/operations/workspace.operation";
+import { createOrUpdateUserWorkspaceRelation } from "@/services/api/db/operations/userworkspace.operation";
+import { findWorkspaceMemberByEmail } from "@/services/api/integrations/slack/channels";
 
 export async function GET(request: Request) {
+  const appBaseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.BETTER_AUTH_URL ||
+    new URL(request.url).origin;
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const cookieStore = await cookies();
+  const storedState = cookieStore.get("slack_oauth_state")?.value;
+  let session;
 
-  if (!code) {
-    throw new Error("Missing code from Slack");
+  try {
+    session = await requireSession(request);
+  } catch {
+    const response = NextResponse.redirect(new URL("/sign-in", appBaseUrl));
+
+    response.cookies.delete("slack_oauth_state");
+
+    return response;
+  }
+
+  const expectedState = `${session.user.id}:${state}`;
+
+  if (!code || !state || !storedState || expectedState !== storedState) {
+    const invalidStateResponse = NextResponse.redirect(
+      new URL("/error?message=invalid_oauth_state", appBaseUrl),
+    );
+
+    invalidStateResponse.cookies.delete("slack_oauth_state");
+
+    return invalidStateResponse;
   }
 
   try {
-    const session = await auth.api.getSession({ headers: request.headers });
-
-    if (!session?.user?.id) {
-      console.error("No user session found during OAuth callback");
-
-      return NextResponse.redirect(
-        new URL("/error?message=no_session", request.url),
-      );
-    }
-
-    const user = session.user;
-
     const slackOauthResponse = await fetch(
       "https://slack.com/api/oauth.v2.access",
       {
@@ -46,7 +66,26 @@ export async function GET(request: Request) {
       throw new Error(data.error || "Slack OAuth exchange failed");
     }
 
-    await api.db.workspace.createOrUpdateWorkspace({
+    if (!session.user.email) {
+      throw new AuthorizationError(
+        "Your Slack profile must expose an email address",
+        403,
+      );
+    }
+
+    const slackMember = await findWorkspaceMemberByEmail(
+      data.access_token,
+      session.user.email,
+    );
+
+    if (!slackMember || slackMember.teamId !== data.team.id) {
+      throw new AuthorizationError(
+        "Sign in with an account that belongs to the installed workspace",
+        403,
+      );
+    }
+
+    await createOrUpdateWorkspace({
       workspaceId: data.team.id,
       workspaceName: data.team.name,
       botToken: data.access_token,
@@ -55,46 +94,33 @@ export async function GET(request: Request) {
       enterpriseId: data.enterprise?.id,
       enterpriseName: data.enterprise?.name,
     });
+    await createOrUpdateUserWorkspaceRelation({
+      userId: session.user.id,
+      workspaceId: data.team.id,
+      slackUserId: slackMember.id,
+      role: "owner",
+    });
 
-    const userWorkspaceRelation =
-      await api.db.userworkspace.getUserWorkspaceRelation(
-        user.id,
-        data.team.id,
-      );
+    const redirectUrl = new URL("/dashboard", appBaseUrl);
 
-    if (!userWorkspaceRelation) {
-      await api.db.userworkspace.createOrUpdateUserWorkspaceRelation(
-        user.id,
-        data.team.id,
-      );
-      console.log(
-        `Created member relationship between user ${user.id} and workspace ${data.team.id}`,
-      );
-    } else {
-      console.log(
-        `User ${user.id} is already linked to workspace ${data.team.id}`,
-      );
-    }
-
-    const redirectUrl = new URL("/dashboard", request.url);
-
-    redirectUrl.searchParams.set("workspace", data.team.id);
     redirectUrl.searchParams.set("success", "true");
 
     const response = NextResponse.redirect(redirectUrl);
 
-    response.cookies.set("lastWorkspaceId", data.team.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 14,
-    });
+    response.cookies.delete("slack_oauth_state");
 
     return response;
   } catch (err) {
     console.error("Slack OAuth error:", err);
+    const errorCode =
+      err instanceof Error ? encodeURIComponent(err.message) : "oauth_failed";
 
-    return NextResponse.redirect(new URL("/error", request.url));
+    const errorResponse = NextResponse.redirect(
+      new URL(`/error?message=${errorCode}`, appBaseUrl),
+    );
+
+    errorResponse.cookies.delete("slack_oauth_state");
+
+    return errorResponse;
   }
 }

@@ -7,6 +7,7 @@ import { SelectModeActions } from "../header/select-mode/select-mode-actions";
 
 import { FileSelector } from "./file-selector/file-selector";
 import { UploadButton } from "./upload-button/upload-button";
+import { UploadQueueStatus } from "./upload-button/upload-queue-status";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
 
@@ -81,6 +82,9 @@ export function Toolbar() {
         </Tabs>
 
         <div className="p-4 border-t border-zinc-200 dark:border-zinc-700">
+          <div className="mb-3">
+            <UploadQueueStatus />
+          </div>
           <UploadButton />
         </div>
       </aside>
@@ -112,6 +116,9 @@ export function Toolbar() {
       </div>
 
       <div className="w-full max-w-md mx-auto my-2">
+        <div className="mb-3">
+          <UploadQueueStatus />
+        </div>
         <UploadButton />
       </div>
     </aside>

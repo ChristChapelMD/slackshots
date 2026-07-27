@@ -1,10 +1,13 @@
-import React, { Suspense, useState, useEffect, memo } from "react";
+import React, { Suspense, useMemo, memo } from "react";
 import { Skeleton } from "@heroui/skeleton";
 
 import { useUIStore } from "@/stores/ui-store";
 import { FileItem } from "@/types/service-types/file-service";
 import { fileTypeRegistry } from "@/lib/file-types/file-type-registry";
 import { ViewMode } from "@/lib/file-types/handlers/file-type-handler";
+import { initializeFileTypeRegistry } from "@/lib/file-types";
+
+initializeFileTypeRegistry();
 
 export const FileRenderer = memo(
   ({
@@ -17,11 +20,7 @@ export const FileRenderer = memo(
     const defaultViewMode = useUIStore((state) => state.viewMode);
     const viewMode = forcedViewMode || defaultViewMode;
 
-    const [Component, setComponent] = useState<React.ComponentType<{
-      item: FileItem;
-    }> | null>(null);
-
-    useEffect(() => {
+    const Component = useMemo(() => {
       const handler = item.fileType
         ? fileTypeRegistry.getHandlerForMimeType(item.fileType)
         : fileTypeRegistry.getHandlerForExtension(
@@ -29,35 +28,21 @@ export const FileRenderer = memo(
           );
 
       if (!handler) {
-        setComponent(null);
-
-        return;
+        return null;
       }
-
-      let RendererComponent;
 
       switch (viewMode) {
         case "grid":
-          RendererComponent =
-            handler.getGridRenderer?.() || handler.getRenderer();
-          break;
+          return handler.getGridRenderer?.() || handler.getRenderer();
         case "list":
-          RendererComponent =
-            handler.getListRenderer?.() || handler.getRenderer();
-          break;
+          return handler.getListRenderer?.() || handler.getRenderer();
         case "detail":
-          RendererComponent =
-            handler.getDetailRenderer?.() || handler.getRenderer();
-          break;
+          return handler.getDetailRenderer?.() || handler.getRenderer();
         case "preview":
-          RendererComponent =
-            handler.getPreviewRenderer?.() || handler.getRenderer();
-          break;
+          return handler.getPreviewRenderer?.() || handler.getRenderer();
         default:
-          RendererComponent = handler.getRenderer();
+          return handler.getRenderer();
       }
-
-      setComponent(() => RendererComponent);
     }, [item._id, item.fileType, item.fileName, viewMode]);
 
     if (!Component) {

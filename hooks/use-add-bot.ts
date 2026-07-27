@@ -1,30 +1,22 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { useAuthStore } from "@/stores/auth-store";
-
 interface AddBotResponse {
-  message: string;
+  success: boolean;
 }
 
 export function useAddBot() {
   const queryClient = useQueryClient();
-  const { accessToken } = useAuthStore();
 
   const addBotToChannel = async (
     channelId: string,
   ): Promise<AddBotResponse> => {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_SERVER_PROTOCOL}://${process.env.NEXT_PUBLIC_SERVER_HOST}/api/addBotToChannel`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ channelId }),
-        credentials: "include",
+    const res = await fetch(`/api/channels/${channelId}/join`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      credentials: "include",
+    });
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));

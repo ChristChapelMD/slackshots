@@ -1,32 +1,25 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+
+import animationData from "@/public/lottie/loader-3QEaG.json";
 
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 interface LoadingAnimationProps {
-  size?: "small" | "medium" | "large";
+  size?: "micro" | "tiny" | "small" | "medium" | "large";
 }
 
 export default function LoadingAnimation({
   size = "medium",
 }: LoadingAnimationProps) {
-  const [animationData, setAnimationData] = useState<any | null>(null);
   const sizeClasses = {
+    micro: "h-5 w-5",
+    tiny: "h-10 w-10",
     small: "w-16 h-16",
     medium: "w-32 h-32",
     large: "w-48 h-48",
   };
-
-  useEffect(() => {
-    fetch("/lottie/loader-3QEaG.json")
-      .then((res) => res.json())
-      .then(setAnimationData)
-      .catch((err) => {
-        throw new Error(`Failed to load Lottie: ${err.message}`);
-      });
-  }, []);
 
   return (
     <div className={sizeClasses[size]}>

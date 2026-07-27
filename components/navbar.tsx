@@ -13,17 +13,13 @@ import { link as linkStyles } from "@heroui/theme";
 import NextLink from "next/link";
 import clsx from "clsx";
 import Image from "next/image";
-import { headers } from "next/headers";
 
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { GithubIcon } from "@/components/icons";
 import SlackShotsLogo from "@/public/SSLOGO_NOBG.png";
-import { auth } from "@/lib/auth";
 
-export const Navbar = async () => {
-  const session = await auth.api.getSession({ headers: await headers() });
-
+export const Navbar = () => {
   return (
     <HeroUINavbar className="pt-4" maxWidth="xl" position="sticky">
       <NavbarContent className="basis-1/5 sm:basis-full" justify="start">
@@ -73,18 +69,18 @@ export const Navbar = async () => {
           <Button
             as={Link}
             className="drop-shadow-lg rounded-lg px-6 py-3 gap-1 font-semibold bg-zinc-950 text-white border border-zinc-400/40 group relative flex items-center justify-center shadow-[inset_0_-8px_10px_#8fdfff1f] transition-shadow duration-500 ease-out hover:shadow-[inset_0_-5px_10px_#8fdfff3f] whitespace-nowrap"
-            href={session ? "/dashboard" : "/sign-in"}
+            href="/dashboard"
             variant="flat"
           >
-            Login
+            Dashboard
           </Button>
           <Button
             as={Link}
             className="drop-shadow-lg rounded-lg px-6 py-2 gap-1 text-slate-900/90 font-semibold border border-zinc-400/40 bg-white group relative flex items-center justify-center shadow-[inset_0_-8px_10px_#8fdfff1f] transition-shadow duration-500 ease-out hover:shadow-[inset_0_-5px_10px_#8fdfff3f] whitespace-nowrap"
-            href={session ? "/dashboard" : "/sign-up"}
+            href="/docs"
             variant="flat"
           >
-            Sign Up
+            Docs
           </Button>
         </NavbarItem>
       </NavbarContent>
@@ -118,10 +114,10 @@ export const Navbar = async () => {
               <Button
                 as={Link}
                 className="drop-shadow-lg rounded-lg px-6 py-3 gap-1 font-semibold bg-zinc-950 text-white border border-zinc-400/40 group relative flex items-center justify-center shadow-[inset_0_-8px_10px_#8fdfff1f] transition-shadow duration-500 ease-out hover:shadow-[inset_0_-5px_10px_#8fdfff3f] whitespace-nowrap"
-                href={session ? "/dashboard" : "/sign-in"}
+                href="/dashboard"
                 variant="flat"
               >
-                Login
+                Dashboard
               </Button>
             </NavbarMenuItem>
 
@@ -129,10 +125,10 @@ export const Navbar = async () => {
               <Button
                 as={Link}
                 className="drop-shadow-lg rounded-lg px-6 py-2 gap-1 text-slate-900/90 font-semibold border border-zinc-400/40 bg-white group relative flex items-center justify-center shadow-[inset_0_-8px_10px_#8fdfff1f] transition-shadow duration-500 ease-out hover:shadow-[inset_0_-5px_10px_#8fdfff3f] whitespace-nowrap"
-                href={session ? "/dashboard" : "/sign-up"}
+                href="/docs"
                 variant="flat"
               >
-                Sign Up
+                Docs
               </Button>
             </NavbarMenuItem>
           </div>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 
 import { FileItem } from "@/types/service-types/file-service";
-import { formatFileSize, formatDate } from "@/lib/utils/format-utils";
+import { formatFileSize } from "@/lib/utils/format-utils";
 
 interface ImageDetailDisplayProps {
   item: FileItem;

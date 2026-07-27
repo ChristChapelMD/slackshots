@@ -9,7 +9,7 @@ export async function fetchChannels(): Promise<ChannelOption[]> {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
 
-    throw new Error(data.message || "Failed to fetch channels");
+    throw new Error(data.message || data.error || "Failed to fetch channels");
   }
 
   const data: { channels: Channel[] } = await response.json();

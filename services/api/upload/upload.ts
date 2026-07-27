@@ -1,17 +1,21 @@
-import { tmpdir } from "os";
-import * as path from "path";
-import * as fs from "fs/promises";
+import type { UploadedBy } from "../db/operations/file.operation";
 
 import { ObjectId } from "mongodb";
 
-import { api } from "../index";
+import { FileRecordStatus } from "../db/models/file.model";
+import {
+  addUploadsToRecords,
+  bulkUpdateFilesStatus,
+  findOrCreateFileRecordsForBatch,
+} from "../db/operations/file.operation";
+import { uploadFiles } from "../integrations/slack/upload";
 
 type Provider = "slack";
 
 interface Credentials {
   botToken: string;
-  userId: ObjectId;
   workspaceId: ObjectId;
+  uploadedBy: UploadedBy;
 }
 
 export async function processAndUpload(
@@ -19,11 +23,28 @@ export async function processAndUpload(
   credentials: Credentials,
   formData: FormData,
 ) {
-  const tempFiles: { filename: string; file: string }[] = [];
   const channel = formData.get("channel") as string;
   const comment = formData.get("comment") as string;
   const files = formData.getAll("files") as File[];
   const uploadSessionId = formData.get("uploadSessionId") as string;
+  let fileRecords: Awaited<ReturnType<typeof findOrCreateFileRecordsForBatch>> =
+    [];
+
+  if (!channel) {
+    throw new Error("Select a Slack channel before uploading.");
+  }
+  if (!uploadSessionId) {
+    throw new Error("Upload session ID is required.");
+  }
+  if (!files.length) {
+    throw new Error("Select at least one file to upload.");
+  }
+  if (files.length > 10) {
+    throw new Error("A server upload batch cannot contain more than 10 files.");
+  }
+  if (files.some((file) => file.size <= 0)) {
+    throw new Error("Empty files cannot be uploaded.");
+  }
 
   try {
     const fileInfoForDB = files.map((file) => ({
@@ -32,34 +53,27 @@ export async function processAndUpload(
       fileType: file.type,
     }));
 
-    const fileRecords = await api.db.file.findOrCreateFileRecordsForBatch(
+    fileRecords = await findOrCreateFileRecordsForBatch(
       fileInfoForDB,
       uploadSessionId,
-      credentials.userId,
       credentials.workspaceId,
+      credentials.uploadedBy,
     );
 
-    await Promise.all(
-      files.map(async (file) => {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const tempFilePath = path.join(tmpdir(), `${Date.now()}-${file.name}`);
-
-        await fs.writeFile(tempFilePath, buffer);
-        tempFiles.push({ filename: file.name, file: tempFilePath });
-      }),
+    const bufferedFiles = await Promise.all(
+      files.map(async (file) => ({
+        filename: file.name,
+        file: Buffer.from(await file.arrayBuffer()),
+      })),
     );
 
     let uploadResult;
 
     switch (provider) {
       case "slack":
-        if (!channel) {
-          throw new Error("Slack uploads require a 'channel' option.");
-        }
-
-        uploadResult = await api.slack.upload.uploadFiles(
+        uploadResult = await uploadFiles(
           credentials.botToken,
-          tempFiles,
+          bufferedFiles,
           channel,
           comment,
         );
@@ -70,35 +84,76 @@ export async function processAndUpload(
         throw new Error(`Upload provider '${provider}' is not supported.`);
     }
 
-    const slackFileResponses = uploadResult.fileMetadata.flatMap(
-      (response: any) => response.files,
+    const slackFileResponses = (uploadResult.uploadResponseArray || []).filter(
+      (file: any) => Boolean(file?.id),
     );
 
-    await Promise.all(
-      slackFileResponses.map((slackFile: any) => {
-        const record = fileRecords.find(
-          (fileRecord) => fileRecord.fileName === slackFile.name,
-        );
+    if (!slackFileResponses.length) {
+      throw new Error(
+        "Slack upload completed but returned no files to link in the app.",
+      );
+    }
 
-        if (!record) return null;
+    const linkCount = Math.min(fileRecords.length, slackFileResponses.length);
+    const linkedTotal = await addUploadsToRecords(
+      Array.from({ length: linkCount }).map((_, index) => {
+        const record = fileRecords[index];
+        const slackFile = slackFileResponses[index];
 
-        return api.db.file.addUploadToRecord(record._id, {
-          provider: "slack",
-          providerFileId: slackFile.id,
-          providerFileUrl: slackFile.url_private,
-        });
+        const providerFileUrl =
+          slackFile.url_private || slackFile.url || "missing-url";
+
+        return {
+          fileRecordId: record._id,
+          providerUpload: {
+            provider: "slack",
+            providerFileId: slackFile.id,
+            providerFileUrl,
+            providerThumbnailUrl: slackFile.thumbnailUrl || undefined,
+          },
+          metadata: {
+            width: slackFile.width,
+            height: slackFile.height,
+            mimetype: slackFile.mimetype,
+            providerSize: slackFile.size,
+          },
+        };
       }),
     );
 
-    return uploadResult;
-  } catch (error) {
-    console.error("Error during upload process:", error);
-    throw error;
-  } finally {
-    for (const { file } of tempFiles) {
-      fs.unlink(file).catch((err) =>
-        console.warn(`Failed to clean up temp file ${file}:`, err),
+    if (linkedTotal === 0) {
+      throw new Error("No uploaded Slack files were linked to app records.");
+    }
+
+    if (slackFileResponses.length !== fileRecords.length) {
+      const unlinkedRecordIds = fileRecords
+        .slice(linkCount)
+        .map((record) => record._id);
+
+      if (unlinkedRecordIds.length) {
+        await bulkUpdateFilesStatus(
+          unlinkedRecordIds,
+          FileRecordStatus.FAILED,
+          { errorMessage: "Slack did not return a matching uploaded file." },
+        );
+      }
+
+      console.warn(
+        `[Upload] Linked ${linkedTotal}/${fileRecords.length} files. Slack returned ${slackFileResponses.length}.`,
       );
     }
+
+    return uploadResult;
+  } catch (error) {
+    const pendingRecordIds = fileRecords.map((record) => record._id);
+
+    if (pendingRecordIds.length) {
+      await bulkUpdateFilesStatus(pendingRecordIds, FileRecordStatus.FAILED, {
+        errorMessage: error instanceof Error ? error.message : "Upload failed",
+      }).catch(() => undefined);
+    }
+
+    console.error("Error during upload process:", error);
+    throw error;
   }
 }

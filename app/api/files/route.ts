@@ -1,36 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import mongoose from "mongoose";
 
-import { auth } from "@/lib/auth";
-import { api } from "@/services/api";
+import {
+  AuthorizationError,
+  requireWorkspaceAccess,
+} from "@/services/api/auth/workspace-access";
+import {
+  deleteFilesForWorkspace,
+  getFilesByIdsForWorkspace,
+  getFilesForWorkspace,
+} from "@/services/api/db/operations/file.operation";
+import { toObjectId } from "@/services/api/db/utils";
+import { deleteFile as deleteSlackFile } from "@/services/api/integrations/slack/files";
 
-const DEFAULT_LIMIT = 16;
+const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({ headers: request.headers });
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const cookieStore = await cookies();
-    const lastWorkspaceId = cookieStore.get("lastWorkspaceId")?.value;
-
-    if (!lastWorkspaceId) {
-      return NextResponse.json(
-        { error: "No workspace selected or linked" },
-        { status: 400 },
-      );
-    }
+    const { workspace } = await requireWorkspaceAccess(request, false);
 
     const searchParams = new URL(request.url).searchParams;
-    const page = Math.max(
-      1,
-      parseInt(searchParams.get("page") ?? "1", 10) || 1,
-    );
+    const cursor = searchParams.get("cursor");
     const limit = Math.min(
       MAX_LIMIT,
       Math.max(
@@ -47,29 +38,12 @@ export async function GET(request: NextRequest) {
           .filter(Boolean)
       : undefined;
 
-    const workspace = await api.db.workspace.getWorkspaceBySlackId(
-      lastWorkspaceId,
-      false,
-    );
-
-    const relation = await api.db.userworkspace.getUserWorkspaceRelation(
-      session.user.id,
-      workspace.workspaceId,
-    );
-
-    if (!relation) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const { files, total } = await api.db.file.getFilesForUser(
-      api.db.utils.toObjectId(session.user.id),
+    const { files, nextCursor } = await getFilesForWorkspace(
       workspace._id,
-      page,
       limit,
       fileTypes,
+      cursor,
     );
-
-    const hasMore = page * limit < total;
 
     return NextResponse.json({
       files: files.map((fileRecord) => ({
@@ -81,13 +55,28 @@ export async function GET(request: NextRequest) {
           provider: upload.provider,
           providerFileId: upload.providerFileId,
         })),
+        uploadedBy: fileRecord.uploadedBy,
+        metadata: fileRecord.metadata,
+        createdAt: fileRecord.createdAt,
       })),
-      page,
       limit,
-      total,
-      hasMore,
+      nextCursor,
     });
   } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
+    if (
+      error instanceof Error &&
+      error.message === "Invalid pagination cursor"
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
     console.error("[List Files API] Error:", error);
 
     return NextResponse.json(
@@ -99,21 +88,7 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({ headers: request.headers });
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const cookieStore = await cookies();
-    const lastWorkspaceId = cookieStore.get("lastWorkspaceId")?.value;
-
-    if (!lastWorkspaceId) {
-      return NextResponse.json(
-        { error: "No workspace selected or linked" },
-        { status: 400 },
-      );
-    }
+    const { workspace } = await requireWorkspaceAccess(request, true);
 
     const body = await request.json().catch(() => null);
     const files = body?.files as
@@ -127,47 +102,61 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const workspace = await api.db.workspace.getWorkspaceBySlackId(
-      lastWorkspaceId,
-      true,
-    );
-
-    const relation = await api.db.userworkspace.getUserWorkspaceRelation(
-      session.user.id,
-      workspace.workspaceId,
-    );
-
-    if (!relation) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const validIds = files
+    const validFiles = files
       .map((file) => {
         try {
-          return api.db.utils.toObjectId(file.fileId);
+          return { ...file, objectId: toObjectId(file.fileId) };
         } catch {
           return null;
         }
       })
       .filter(
-        (id): id is mongoose.Types.ObjectId => id !== null && id !== undefined,
+        (
+          file,
+        ): file is {
+          fileId: string;
+          deleteFlag: "app" | "both";
+          objectId: mongoose.Types.ObjectId;
+        } => file !== null,
       );
 
-    if (!validIds.length) {
+    if (!validFiles.length) {
       return NextResponse.json(
         { error: "No valid file IDs provided" },
         { status: 400 },
       );
     }
 
-    const deletedCount = await api.db.file.deleteFilesForUserWorkspace(
-      validIds,
-      api.db.utils.toObjectId(session.user.id),
-      workspace._id,
+    const validIds = validFiles.map((file) => file.objectId);
+    const records = await getFilesByIdsForWorkspace(validIds, workspace._id);
+    const deleteFromSlackIds = new Set(
+      validFiles
+        .filter((file) => file.deleteFlag === "both")
+        .map((file) => file.fileId),
     );
+
+    await Promise.all(
+      records
+        .filter((record) => deleteFromSlackIds.has(record._id.toString()))
+        .flatMap((record) =>
+          record.uploads
+            .filter((upload) => upload.provider === "slack")
+            .map((upload) =>
+              deleteSlackFile(upload.providerFileId, workspace.botToken),
+            ),
+        ),
+    );
+
+    const deletedCount = await deleteFilesForWorkspace(validIds, workspace._id);
 
     return NextResponse.json({ deletedCount });
   } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     console.error("[Delete Files API] Error:", error);
 
     return NextResponse.json(

@@ -15,17 +15,22 @@ export function UploadButton() {
   const files = useUploadFormStore((state) => state.formState.files);
   const channel = useUploadFormStore((state) => state.formState.channel);
   const isUploading = useUploadProcessStore((state) => state.isUploading);
+  const queuedCount = useUploadProcessStore(
+    (state) =>
+      state.jobs.filter(
+        (job) => job.status === "queued" || job.status === "uploading",
+      ).length,
+  );
   const isOpen = useDrawerStore((state) => state.isOpen);
-  const closeDrawer = useDrawerStore((state) => state.closeDrawer);
   const isAnimating = useDrawerStore((state) => state.isAnimating);
 
   const handleUpload = () => {
     startUpload();
-    closeDrawer();
   };
 
   const isDrawerOpen = isOpen || isAnimating;
-  const isDisabled = !files || !channel || isUploading;
+  const hasFiles = Boolean(files?.length);
+  const isDisabled = !hasFiles || !channel || isDrawerOpen;
 
   return (
     <TextureContainer className="w-full hover:bg">
@@ -44,28 +49,28 @@ export function UploadButton() {
             "before:absolute before:bottom-[-20%] before:left-1/2 before:z-0 before:h-1/5 before:w-3/5 before:-translate-x-1/2 before:animate-rainbow before:bg-[linear-gradient(90deg,hsl(var(--color-1)),hsl(var(--color-5)),hsl(var(--color-3)),hsl(var(--color-4)),hsl(var(--color-2)))] before:[filter:blur(calc(0.8*1rem))]",
         )}
         isDisabled={isDisabled}
-        isLoading={isUploading}
         variant="shadow"
         onPress={handleUpload}
       >
-        {isUploading ? (
-          <p className="font-medium">Uploading...</p>
-        ) : (
-          <div className="flex items-center justify-center gap-2 w-full">
-            <span
-              className={cn(
-                "transition-all duration-300 ease-in-out",
-                isDisabled
-                  ? "opacity-0 transform -translate-x-4 scale-0"
-                  : "opacity-100 transform translate-x-0 scale-100",
-                "text-lg",
-              )}
-            >
-              🚀
-            </span>
-            <span className="font-medium mr-8">Upload</span>
-          </div>
-        )}
+        <div className="flex w-full items-center justify-center gap-2">
+          <span
+            className={cn(
+              "text-lg transition-all duration-300 ease-in-out",
+              isDisabled
+                ? "-translate-x-4 scale-0 opacity-0"
+                : "translate-x-0 scale-100 opacity-100",
+            )}
+          >
+            🚀
+          </span>
+          <span className="font-medium">
+            {isUploading
+              ? hasFiles
+                ? `Add to queue${queuedCount ? ` (${queuedCount})` : ""}`
+                : "Select files to queue"
+              : "Upload"}
+          </span>
+        </div>
       </Button>
     </TextureContainer>
   );

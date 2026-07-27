@@ -4,7 +4,6 @@ import { useState } from "react";
 import Image from "next/image";
 import { Skeleton } from "@heroui/skeleton";
 
-import { useFileStore } from "@/stores/file-store";
 import { FileItem } from "@/types/service-types/file-service";
 
 interface ImageGridDisplayProps {
@@ -14,12 +13,10 @@ interface ImageGridDisplayProps {
 export default function ImageGridDisplay({ item }: ImageGridDisplayProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const prioritizedFileIds = useFileStore((state) => state.prioritizedFileIds);
-
-  const isPriority = prioritizedFileIds.includes(item._id);
-
   const providerFileId = item.uploads?.[0]?.providerFileId;
-  const imageUrl = providerFileId ? `/api/files/${providerFileId}` : null;
+  const imageUrl = providerFileId
+    ? `/api/files/${providerFileId}?variant=thumbnail`
+    : null;
 
   if (hasError || !imageUrl) {
     return (
@@ -36,12 +33,13 @@ export default function ImageGridDisplay({ item }: ImageGridDisplayProps) {
       {imageUrl && (
         <Image
           fill
+          unoptimized
           alt={item.fileName || "Image"}
           className={`object-cover transition-opacity duration-300 ${
             !isLoaded ? "opacity-0" : "opacity-100"
           }`}
-          priority={isPriority}
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          loading="lazy"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 16vw"
           src={imageUrl}
           onError={() => setHasError(true)}
           onLoad={() => {

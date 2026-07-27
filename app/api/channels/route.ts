@@ -1,47 +1,26 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { headers } from "next/headers";
 
-import { auth } from "@/lib/auth";
-import { api } from "@/services/api";
+import {
+  AuthorizationError,
+  requireWorkspaceAccess,
+} from "@/services/api/auth/workspace-access";
+import { getChannels } from "@/services/api/integrations/slack/channels";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    const user = session?.user;
+    const { workspace } = await requireWorkspaceAccess(request, true);
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const cookieStore = await cookies();
-    const workspaceId = cookieStore.get("lastWorkspaceId")?.value;
-
-    if (!workspaceId) {
-      return NextResponse.json(
-        { error: "No workspace selected or linked" },
-        { status: 400 },
-      );
-    }
-
-    const workspace = await api.db.workspace.getWorkspaceBySlackId(
-      workspaceId,
-      true,
-    );
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 },
-      );
-    }
-
-    const channels = await api.slack.channels.getChannels(
-      workspace.botToken as string,
-    );
+    const channels = await getChannels(workspace.botToken as string);
 
     return NextResponse.json({ channels });
   } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
     console.error("[Channels API] Error:", error);
 
     return NextResponse.json(

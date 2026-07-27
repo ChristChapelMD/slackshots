@@ -4,17 +4,21 @@ import {
 } from "@/types/service-types/file-service";
 
 export async function fetchFiles(
-  page: number,
+  cursor: string | null,
   limit: number,
   fileTypes?: string[],
 ): Promise<FetchFilesResponse> {
-  let queryParams = `page=${page}&limit=${limit}`;
+  const searchParams = new URLSearchParams({ limit: String(limit) });
 
-  if (fileTypes && fileTypes.length > 0) {
-    queryParams += `&fileTypes=${fileTypes.join(",")}`;
+  if (cursor) {
+    searchParams.set("cursor", cursor);
   }
 
-  const response = await fetch(`/api/files?${queryParams}`, {
+  if (fileTypes && fileTypes.length > 0) {
+    searchParams.set("fileTypes", fileTypes.join(","));
+  }
+
+  const response = await fetch(`/api/files?${searchParams.toString()}`, {
     method: "GET",
     credentials: "include",
   });
@@ -22,19 +26,15 @@ export async function fetchFiles(
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
 
-    throw new Error(data.message || "Failed to fetch files");
+    throw new Error(data.message || data.error || "Failed to fetch files");
   }
 
   const data = await response.json();
 
   return {
     files: data.files || [],
-    hasMore:
-      typeof data.hasMore === "boolean"
-        ? data.hasMore
-        : (data.files?.length ?? 0) > 0,
-    total: data.total,
-    page: data.page,
+    hasMore: Boolean(data.nextCursor),
+    nextCursor: data.nextCursor ?? null,
     limit: data.limit,
   };
 }
@@ -56,7 +56,7 @@ export async function deleteFiles(
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
 
-    throw new Error(data.message || `Failed to delete files`);
+    throw new Error(data.message || data.error || "Failed to delete files");
   }
 
   return true;
@@ -94,7 +94,6 @@ export async function downloadMultipleFiles(files: FileItem[]): Promise<void> {
 
   // Fallback: trigger individual downloads for each file
   for (const file of files) {
-    // eslint-disable-next-line no-await-in-loop
     await downloadSingleFile(file);
   }
 }

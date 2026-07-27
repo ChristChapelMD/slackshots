@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 
 import { useUploadFormStore } from "@/stores/upload-form-store";
 
@@ -9,6 +9,7 @@ export function useFileHandlers() {
     (state) => state.formState.fileTypes,
   );
   const setUploadFiles = useUploadFormStore((state) => state.setFiles);
+  const selectedFiles = useUploadFormStore((state) => state.formState.files);
   const setFileSelection = useUploadFormStore(
     (state) => state.setFileSelection,
   );
@@ -21,6 +22,15 @@ export function useFileHandlers() {
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const filesInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!selectedFiles && fileCount > 0) {
+      setFileCount(0);
+      setSelectionType(null);
+      setInputKey(Date.now());
+      if (filesInputRef.current) filesInputRef.current.value = "";
+    }
+  }, [selectedFiles, fileCount]);
 
   const clearSelection = useCallback(() => {
     setUploadFiles(null);

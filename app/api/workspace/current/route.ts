@@ -1,31 +1,34 @@
-import { NextResponse, NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-import { api } from "@/services/api";
+import {
+  AuthorizationError,
+  requireSession,
+  requireWorkspaceAccess,
+} from "@/services/api/auth/workspace-access";
+import { getDefaultWorkspace } from "@/services/api/db/operations/workspace.operation";
 
-export async function GET(request: NextRequest) {
-  const currentWorkspaceId = request.cookies.get("lastWorkspaceId")?.value;
-
-  if (!currentWorkspaceId) {
-    return NextResponse.json(
-      { error: "No workspace selected" },
-      { status: 400 },
-    );
-  }
-
+export async function GET(request: Request) {
   try {
-    const workspace = await api.db.workspace.getWorkspaceBySlackId(
-      currentWorkspaceId,
-      false,
-    );
+    await requireSession(request);
+    const installedWorkspace = await getDefaultWorkspace(false);
 
-    if (!workspace) {
+    if (!installedWorkspace) {
       return NextResponse.json({ workspace: null });
     }
 
+    const { workspace } = await requireWorkspaceAccess(request, false);
+
     return NextResponse.json({ workspace });
   } catch (err) {
+    if (err instanceof AuthorizationError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+
     console.error(err);
 
-    return NextResponse.json({ workspace: null });
+    return NextResponse.json(
+      { error: "Failed to fetch current workspace" },
+      { status: 500 },
+    );
   }
 }

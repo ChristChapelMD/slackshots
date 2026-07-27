@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { Button } from "@heroui/button";
-import { Link as HeroLink } from "@heroui/link";
 
 import SlackLogo from "@/public/SLA-appIcon-desktop.png";
 import { useAuth } from "@/hooks/use-auth";
@@ -12,7 +11,6 @@ export function SlackAuthButton() {
 
   return (
     <Button
-      as={HeroLink}
       className="flex items-center justify-center gap-2 w-full rounded-lg px-4 py-3 text-slate-900 font-medium border border-zinc-300 bg-white shadow-sm hover:shadow-md transition-shadow"
       isLoading={loading}
       onPress={signInWithSlack}

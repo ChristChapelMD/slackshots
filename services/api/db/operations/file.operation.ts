@@ -1,16 +1,20 @@
 import mongoose from "mongoose";
 
-import { File, FileRecordStatus } from "../models/file.model";
+import { File, FileRecordStatus, FileRecordDTO } from "../models/file.model";
 
 import dbConnect from "@/services/api/db/connection";
 
 export type FileUpdateDetails = {
-  slackFileId?: string;
-  slackFileUrl?: string;
   errorMessage?: string;
-  aiTags?: string[];
-  moderationFlag?: boolean;
+  metadata?: Record<string, unknown>;
 };
+
+export interface UploadedBy {
+  userId: string;
+  name: string;
+  email?: string;
+  image?: string;
+}
 
 export async function findOrCreateFileRecordsForBatch(
   files: {
@@ -19,65 +23,109 @@ export async function findOrCreateFileRecordsForBatch(
     fileType: string;
   }[],
   uploadSessionId: string,
-  userId: mongoose.Types.ObjectId,
   workspaceId: mongoose.Types.ObjectId,
+  uploadedBy: UploadedBy,
 ) {
   await dbConnect();
 
-  const operations = files.map((file) => ({
-    updateOne: {
-      filter: {
-        uploadSessionId,
-        fileName: file.fileName,
-        userId,
-      },
-      update: {
-        $setOnInsert: {
-          ...file,
-          uploadSessionId,
-          userId,
-          workspaceId,
-          status: FileRecordStatus.PENDING,
-          uploads: [],
-        },
-      },
-      upsert: true,
-    },
+  const docs = files.map((file) => ({
+    ...file,
+    uploadSessionId,
+    workspaceId,
+    uploadedBy,
+    status: FileRecordStatus.PENDING,
+    uploads: [],
   }));
 
-  await File.bulkWrite(operations);
-
-  return await File.find({
-    uploadSessionId,
-    userId,
-    fileName: { $in: files.map((file) => file.fileName) },
-  });
+  // Always create one record per selected file so duplicate filenames do not collapse.
+  return await File.insertMany(docs, { ordered: true });
 }
 
-export async function addUploadToRecord(
-  fileRecordId: mongoose.Types.ObjectId,
-  providerUpload: {
-    provider: string;
-    providerFileId: string;
-    providerFileUrl: string;
+export async function addUploadsToRecords(
+  uploads: {
+    fileRecordId: mongoose.Types.ObjectId;
+    providerUpload: {
+      provider: string;
+      providerFileId: string;
+      providerFileUrl: string;
+      providerThumbnailUrl?: string;
+    };
+    metadata?: Record<string, unknown>;
+  }[],
+) {
+  await dbConnect();
+
+  if (!uploads.length) return 0;
+
+  const result = await File.bulkWrite(
+    uploads.map(({ fileRecordId, providerUpload, metadata }) => ({
+      updateOne: {
+        filter: { _id: fileRecordId },
+        update: {
+          $push: { uploads: providerUpload },
+          $set: {
+            status: FileRecordStatus.UPLOADED,
+            ...(metadata ? { metadata } : {}),
+          },
+        },
+      },
+    })),
+    { ordered: true },
+  );
+
+  return result.modifiedCount;
+}
+
+export async function findFileByProviderId(
+  workspaceId: mongoose.Types.ObjectId,
+  providerFileId: string,
+) {
+  await dbConnect();
+
+  return File.findOne({
+    workspaceId,
+    "uploads.providerFileId": providerFileId,
+  }).lean<FileRecordDTO & { _id: mongoose.Types.ObjectId }>();
+}
+
+export async function updateProviderFileMetadata(
+  fileId: mongoose.Types.ObjectId,
+  providerFileId: string,
+  {
+    providerFileUrl,
+    providerThumbnailUrl,
+    metadata,
+  }: {
+    providerFileUrl?: string;
+    providerThumbnailUrl?: string;
+    metadata?: Record<string, unknown>;
   },
 ) {
   await dbConnect();
 
-  return await File.findByIdAndUpdate(
-    fileRecordId,
-    {
-      $push: { uploads: providerUpload },
-      $set: { status: FileRecordStatus.UPLOADED },
-    },
+  const updates: Record<string, unknown> = {};
+
+  if (providerFileUrl) {
+    updates["uploads.$.providerFileUrl"] = providerFileUrl;
+  }
+  if (providerThumbnailUrl) {
+    updates["uploads.$.providerThumbnailUrl"] = providerThumbnailUrl;
+  }
+  if (metadata) {
+    for (const [key, value] of Object.entries(metadata)) {
+      if (value !== undefined) {
+        updates[`metadata.${key}`] = value;
+      }
+    }
+  }
+
+  if (!Object.keys(updates).length) return null;
+
+  return File.findOneAndUpdate(
+    { _id: fileId, "uploads.providerFileId": providerFileId },
+    { $set: updates },
     { new: true },
-  );
-}
-
-export async function findFileByProviderId(providerFileId: string) {
-  await dbConnect();
-
-  return await File.findOne({ "uploads.providerFileId": providerFileId });
+  ).lean<FileRecordDTO & { _id: mongoose.Types.ObjectId }>();
 }
 
 export async function updateFileRecord(
@@ -94,74 +142,93 @@ export async function updateFileRecord(
   );
 }
 
-export async function getPendingFilesBySession(uploadSessionID: string) {
+export async function getPendingFilesBySession(uploadSessionId: string) {
   await dbConnect();
 
   return await File.find({
-    uploadSessionID,
+    uploadSessionId,
     status: FileRecordStatus.PENDING,
   }).sort({
     createdAt: 1,
   });
 }
 
-export async function getFailedFilesBySession(uploadSessionID: string) {
+export async function getFailedFilesBySession(uploadSessionId: string) {
   await dbConnect();
 
   return await File.find({
-    uploadSessionID,
+    uploadSessionId,
     status: FileRecordStatus.FAILED,
   }).sort({
     createdAt: 1,
   });
 }
 
-export async function getFilesForUser(
-  userId: mongoose.Types.ObjectId,
-  workspaceId?: mongoose.Types.ObjectId,
-  page: number = 1,
+export async function getFilesForWorkspace(
+  workspaceId: mongoose.Types.ObjectId,
   limit: number = 16,
   fileTypes?: string[],
-): Promise<{ files: File[]; total: number }> {
+  cursor?: string | null,
+): Promise<{
+  files: Array<FileRecordDTO & { _id: mongoose.Types.ObjectId }>;
+  nextCursor: string | null;
+}> {
   await dbConnect();
 
   const filter: Record<string, unknown> = {
-    userId,
+    workspaceId,
     status: FileRecordStatus.UPLOADED,
   };
-
-  if (workspaceId) {
-    filter.workspaceId = workspaceId;
-  }
 
   if (fileTypes?.length) {
     filter.fileType = { $in: fileTypes };
   }
 
-  const skip = (page - 1) * limit;
+  if (cursor) {
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(cursor, "base64url").toString("utf8"),
+      ) as { createdAt: string; id: string };
+      const cursorDate = new Date(decoded.createdAt);
+      const cursorId = new mongoose.Types.ObjectId(decoded.id);
 
-  const [files, total] = await Promise.all([
-    File.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-    File.countDocuments(filter),
-  ]);
+      filter.$or = [
+        { createdAt: { $lt: cursorDate } },
+        { createdAt: cursorDate, _id: { $lt: cursorId } },
+      ];
+    } catch {
+      throw new Error("Invalid pagination cursor");
+    }
+  }
 
-  return { files, total };
-}
+  const records = await File.find(filter)
+    .select({
+      fileName: 1,
+      fileSize: 1,
+      fileType: 1,
+      uploadedBy: 1,
+      uploads: 1,
+      metadata: 1,
+      createdAt: 1,
+    })
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(limit + 1)
+    .lean<Array<FileRecordDTO & { _id: mongoose.Types.ObjectId }>>();
 
-export async function getFilesForWorkspace(
-  workspaceId: string,
-  page: number = 1,
-  limit: number = 16,
-) {
-  await dbConnect();
+  const hasMore = records.length > limit;
+  const files = hasMore ? records.slice(0, limit) : records;
+  const lastFile = files.at(-1);
+  const nextCursor =
+    hasMore && lastFile
+      ? Buffer.from(
+          JSON.stringify({
+            createdAt: lastFile.createdAt.toISOString(),
+            id: lastFile._id.toString(),
+          }),
+        ).toString("base64url")
+      : null;
 
-  return await File.find({
-    workspaceId,
-    status: FileRecordStatus.UPLOADED,
-  })
-    .sort({ createdAt: -1 })
-    .skip((page - 1) * limit)
-    .limit(limit);
+  return { files, nextCursor };
 }
 
 export async function markFileAsFailed(
@@ -188,9 +255,8 @@ export async function bulkUpdateFilesStatus(
   );
 }
 
-export async function deleteFilesForUserWorkspace(
+export async function deleteFilesForWorkspace(
   fileIds: mongoose.Types.ObjectId[],
-  userId: mongoose.Types.ObjectId,
   workspaceId: mongoose.Types.ObjectId,
 ): Promise<number> {
   await dbConnect();
@@ -199,11 +265,26 @@ export async function deleteFilesForUserWorkspace(
 
   const result = await File.deleteMany({
     _id: { $in: fileIds },
-    userId,
     workspaceId,
   });
 
   return result.deletedCount ?? 0;
+}
+
+export async function getFilesByIdsForWorkspace(
+  fileIds: mongoose.Types.ObjectId[],
+  workspaceId: mongoose.Types.ObjectId,
+) {
+  await dbConnect();
+
+  return File.find({
+    _id: { $in: fileIds },
+    workspaceId,
+  })
+    .select({ uploads: 1 })
+    .lean<
+      Array<Pick<FileRecordDTO, "uploads"> & { _id: mongoose.Types.ObjectId }>
+    >();
 }
 
 export const anonymizeFileRecord = async (
@@ -218,12 +299,10 @@ export const anonymizeFileRecord = async (
 
   try {
     const result = await File.updateMany(
-      { userId, slackFileID: { $in: fileIds } },
+      { userId, "uploads.providerFileId": { $in: fileIds } },
       {
         $unset: {
-          name: "",
-          slackFileID: "",
-          slackFileURL: "",
+          uploadedBy: "",
         },
       },
     );

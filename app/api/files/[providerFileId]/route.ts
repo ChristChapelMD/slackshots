@@ -1,60 +1,49 @@
-import fs from "fs/promises";
-import path from "path";
-
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 
-import { auth } from "@/lib/auth";
-import { api } from "@/services/api";
+import {
+  AuthorizationError,
+  requireWorkspaceAccess,
+} from "@/services/api/auth/workspace-access";
+import {
+  findFileByProviderId,
+  updateProviderFileMetadata,
+} from "@/services/api/db/operations/file.operation";
+import {
+  fetchFile,
+  getFileMetadata,
+} from "@/services/api/integrations/slack/files";
+
+const MAX_FETCH_ATTEMPTS = 2;
+
+function isRetryableFetchError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = (error as any)?.cause;
+  const code = (cause as any)?.code;
+
+  return (
+    message.toLowerCase().includes("terminated") ||
+    message.toLowerCase().includes("socket") ||
+    code === "UND_ERR_SOCKET"
+  );
+}
 
 export async function GET(
   request: Request,
-  context: { params: { providerFileId: string } } | any,
+  context: { params: Promise<{ providerFileId: string }> },
 ) {
   const params = await context.params;
   const { providerFileId } = params;
 
-  console.log(process.env.NEXT_RUNTIME);
-  console.log(providerFileId);
-
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    const user = session?.user;
+    const { workspace } = await requireWorkspaceAccess(request, true);
 
-    console.log(session);
-    console.log(user);
-    console.log(user?.id);
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const fileRecord = await api.db.file.findFileByProviderId(providerFileId);
+    let fileRecord = await findFileByProviderId(workspace._id, providerFileId);
 
     if (!fileRecord) {
       return new NextResponse("Not Found", { status: 404 });
     }
 
-    const workspace = await api.db.workspace.getWorkspaceByDocumentId(
-      fileRecord.workspaceId.toString(),
-      true,
-    );
-
-    if (!workspace || !workspace.botToken) {
-      return new NextResponse("Workspace config error", { status: 500 });
-    }
-
-    const userWorkspaceRelation =
-      await api.db.userworkspace.getUserWorkspaceRelation(
-        session.user.id,
-        workspace.workspaceId as string,
-      );
-
-    if (!userWorkspaceRelation) {
-      return new NextResponse("Forbidden", { status: 403 });
-    }
-
-    const slackUpload = fileRecord.uploads.find(
+    let slackUpload = fileRecord.uploads.find(
       (upload: any) => upload.provider === "slack",
     );
 
@@ -62,41 +51,105 @@ export async function GET(
       return new NextResponse("File not found on provider", { status: 404 });
     }
 
-    console.time("slack-fetch");
-    const slackResponse = await api.slack.files.fetchFile(
-      slackUpload.providerFileUrl,
-      workspace.botToken,
-    );
-    console.timeEnd("slack-fetch");
+    const requestUrl = new URL(request.url);
+    const useThumbnail = requestUrl.searchParams.get("variant") === "thumbnail";
 
-    if (!slackResponse.body) {
+    if (
+      !slackUpload.providerFileUrl ||
+      (useThumbnail && !slackUpload.providerThumbnailUrl)
+    ) {
+      const providerMetadata = await getFileMetadata(
+        providerFileId,
+        workspace.botToken as string,
+      );
+
+      const updatedRecord = await updateProviderFileMetadata(
+        fileRecord._id,
+        providerFileId,
+        providerMetadata,
+      );
+
+      if (updatedRecord) {
+        fileRecord = updatedRecord;
+        slackUpload = fileRecord.uploads.find(
+          (upload: any) => upload.provider === "slack",
+        )!;
+      }
+    }
+
+    const providerUrl =
+      (useThumbnail && slackUpload.providerThumbnailUrl) ||
+      slackUpload.providerFileUrl;
+
+    if (!providerUrl) {
+      return new NextResponse("File URL is unavailable", { status: 502 });
+    }
+
+    let slackResponse: Response | null = null;
+
+    for (let attempt = 0; attempt < MAX_FETCH_ATTEMPTS; attempt += 1) {
+      try {
+        slackResponse = await fetchFile(
+          providerUrl,
+          workspace.botToken as string,
+          request.headers.get("range"),
+        );
+
+        break;
+      } catch (error) {
+        const shouldRetry =
+          attempt < MAX_FETCH_ATTEMPTS - 1 && isRetryableFetchError(error);
+
+        if (shouldRetry) {
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    if (!slackResponse?.body) {
       return new NextResponse("Response from provider contained no data.", {
         status: 502,
       });
     }
 
-    const tmpPath = path.join("/tmp", `${providerFileId}-${Date.now()}`);
-    const fileBuffer = Buffer.from(await slackResponse.arrayBuffer());
+    const resolvedContentType =
+      slackResponse.headers.get("content-type") ||
+      fileRecord.fileType ||
+      "application/octet-stream";
+    const encodedFileName = encodeURIComponent(fileRecord.fileName || "file");
 
-    await fs.writeFile(tmpPath, fileBuffer);
-
-    const fileData = await fs.readFile(tmpPath);
-
-    await fs.unlink(tmpPath).catch(() => {
-      // Ignore cleanup errors
-    });
-
-    const responseHeaders = {
-      "Content-Type": fileRecord.fileType,
-      "Content-Length": fileRecord.fileSize.toString(),
-      "Cache-Control": "public, max-age=0, must-revalidate",
+    const responseHeaders: Record<string, string> = {
+      "Content-Type": resolvedContentType,
+      "Cache-Control": useThumbnail
+        ? "private, max-age=86400, stale-while-revalidate=604800"
+        : "private, max-age=3600, stale-while-revalidate=86400",
+      "Content-Disposition": `inline; filename*=UTF-8''${encodedFileName}`,
     };
 
-    return new NextResponse(fileData, {
-      status: 200,
+    for (const header of [
+      "content-length",
+      "content-range",
+      "accept-ranges",
+      "etag",
+      "last-modified",
+    ]) {
+      const value = slackResponse.headers.get(header);
+
+      if (value) {
+        responseHeaders[header] = value;
+      }
+    }
+
+    return new NextResponse(slackResponse.body, {
+      status: slackResponse.status,
       headers: responseHeaders,
     });
   } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return new NextResponse(error.message, { status: error.status });
+    }
     console.error("[File Proxy Error]:", error);
 
     return new NextResponse("Internal Server Error", { status: 500 });

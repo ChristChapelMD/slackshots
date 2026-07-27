@@ -1,47 +1,39 @@
-import { cookies, headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-import { api } from "@/services/api";
-import { auth } from "@/lib/auth";
+import {
+  AuthorizationError,
+  requireWorkspaceAccess,
+} from "@/services/api/auth/workspace-access";
+import { processAndUpload } from "@/services/api/upload/upload";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    const user = session?.user;
-
-    if (!user) {
-      throw new Error("Unauthorized");
-    }
-
-    const cookieStore = await cookies();
-    const lastWorkspaceId = cookieStore.get("lastWorkspaceId")?.value;
-
-    if (!lastWorkspaceId) {
-      throw new Error("No workspace selected or linked");
-    }
-
-    const workspace = await api.db.workspace.getWorkspaceBySlackId(
-      lastWorkspaceId,
-      true,
-    );
-
-    if (!workspace) {
-      throw new Error("Workspace not found");
-    }
+    const { session, workspace } = await requireWorkspaceAccess(request, true);
 
     const formData = await request.formData();
-    const result = await api.upload.processAndUpload(
+    const result = await processAndUpload(
       "slack",
       {
         botToken: workspace.botToken as string,
-        userId: api.db.utils.toObjectId(user.id),
         workspaceId: workspace._id,
+        uploadedBy: {
+          userId: session.user.id,
+          name: session.user.name,
+          email: session.user.email,
+          image: session.user.image || undefined,
+        },
       },
       formData,
     );
 
     return NextResponse.json({ data: result.uploadResponseArray });
   } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json(
+        { message: error.message },
+        { status: error.status },
+      );
+    }
     console.error("[Process Batch API] Error:", error);
 
     return NextResponse.json(

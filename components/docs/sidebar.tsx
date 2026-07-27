@@ -18,7 +18,7 @@ const navigation = [
     links: [
       { title: "Authentication", href: "/docs/api/authentication" },
       { title: "Files", href: "/docs/api/files" },
-      { title: "Workspaces", href: "/docs/api/workspaces" },
+      { title: "Slack Workspace", href: "/docs/api/workspaces" },
     ],
   },
   {

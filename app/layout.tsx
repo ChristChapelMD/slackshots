@@ -34,7 +34,7 @@ export default function RootLayout({
   return (
     <html suppressHydrationWarning lang="en">
       <head>
-        {process.env.NEXT_PUBLIC_NODE_ENV === "development" && (
+        {process.env.NODE_ENV === "development" && (
           <Script
             crossOrigin="anonymous"
             src="//unpkg.com/react-scan/dist/auto.global.js"

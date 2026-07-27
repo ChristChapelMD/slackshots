@@ -5,5 +5,7 @@ import { ImageHandler } from "./handlers/image-handler";
  * Initialize the file type registry with default handlers
  */
 export function initializeFileTypeRegistry() {
-  fileTypeRegistry.register(new ImageHandler());
+  if (!fileTypeRegistry.getHandler("image")) {
+    fileTypeRegistry.register(new ImageHandler());
+  }
 }

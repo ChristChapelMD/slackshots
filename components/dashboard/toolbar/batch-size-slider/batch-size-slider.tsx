@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Slider } from "@heroui/slider";
 import { Card, CardHeader, CardBody } from "@heroui/card";
 import { Stack, StackPlus, StackMinus } from "@phosphor-icons/react";
@@ -9,17 +9,22 @@ import { TextureContainer } from "@/components/ui/texture-container";
 import { useDrawerStore } from "@/stores/drawer-store";
 import { useDebounceStoreUpdate } from "@/hooks/use-debounce-store-update";
 import { useUploadFormStore } from "@/stores/upload-form-store";
-import { useUploadProcessStore } from "@/stores/upload-process-store";
 
 export function BatchSizeSlider() {
+  const MAX_BATCH_SIZE = 10;
   const updateUploadForm = useUploadFormStore((state) => state.updateForm);
   const initial = useUploadFormStore(
     (state) => state.formState.messageBatchSize,
   );
-  const isUploading = useUploadProcessStore((state) => state.isUploading);
   const isAnimating = useDrawerStore((state) => state.isAnimating);
   const isOpen = useDrawerStore((state) => state.isOpen);
-  const [localVal, setLocalVal] = useState(initial);
+  const [localVal, setLocalVal] = useState(Math.min(initial, MAX_BATCH_SIZE));
+
+  useEffect(() => {
+    if (initial > MAX_BATCH_SIZE) {
+      updateUploadForm({ messageBatchSize: MAX_BATCH_SIZE });
+    }
+  }, [initial, updateUploadForm]);
 
   const { run: updateDebounce } = useDebounceStoreUpdate<number>(
     (val) => updateUploadForm({ messageBatchSize: val }),
@@ -27,7 +32,7 @@ export function BatchSizeSlider() {
   );
 
   const isDrawerOpen = isOpen || isAnimating;
-  const isDisabled = isDrawerOpen || isUploading;
+  const isDisabled = isDrawerOpen;
 
   return (
     <TextureContainer className="w-full">
@@ -48,10 +53,10 @@ export function BatchSizeSlider() {
             isDisabled={isDisabled}
             marks={[
               { value: 1, label: "1" },
-              { value: 7, label: "7" },
-              { value: 14, label: "14" },
+              { value: 5, label: "5" },
+              { value: 10, label: "10" },
             ]}
-            maxValue={14}
+            maxValue={MAX_BATCH_SIZE}
             minValue={1}
             showTooltip={true}
             size="sm"

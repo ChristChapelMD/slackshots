@@ -3,11 +3,13 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 
 import { client } from "@/services/client";
+import { useWorkspace } from "@/hooks/use-workspace";
 
 const STALE_TIME = 1000 * 60 * 5;
 
 export function useFiles() {
   const queryClient = useQueryClient();
+  const { currentWorkspace } = useWorkspace();
 
   const {
     data,
@@ -17,11 +19,12 @@ export function useFiles() {
     hasNextPage,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey: ["files"],
-    queryFn: ({ pageParam = 1 }) => client.files.fetchFiles(pageParam, 16),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage, allPages) => {
-      return lastPage.hasMore ? allPages.length + 1 : undefined;
+    queryKey: ["files", currentWorkspace?.workspaceId],
+    queryFn: ({ pageParam }) => client.files.fetchFiles(pageParam, 48),
+    initialPageParam: null as string | null,
+    enabled: !!currentWorkspace,
+    getNextPageParam: (lastPage) => {
+      return lastPage.nextCursor || undefined;
     },
     staleTime: STALE_TIME,
   });

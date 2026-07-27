@@ -28,7 +28,7 @@ export function BaseDrawer({ containerRef }: BaseDrawerProps) {
     if (containerRef.current) {
       requestAnimationFrame(() => setIsReady(true));
     }
-  }, [containerRef.current]);
+  }, [containerRef]);
 
   const {
     placement = "right",
@@ -39,29 +39,6 @@ export function BaseDrawer({ containerRef }: BaseDrawerProps) {
     backdrop = "opaque",
     isDismissable = true,
   } = config;
-
-  useEffect(() => {
-    if (!isOpen || !isDismissable || !containerRef.current) return;
-
-    const handleClickCapture = (event: MouseEvent) => {
-      const container = containerRef.current;
-      const target = event.target as Node;
-
-      if (container?.contains(target)) {
-        closeDrawer();
-
-        return;
-      }
-    };
-
-    document.addEventListener("mouseup", handleClickCapture, true);
-    document.addEventListener("click", handleClickCapture, true);
-
-    return () => {
-      document.removeEventListener("mouseup", handleClickCapture, true);
-      document.removeEventListener("click", handleClickCapture, true);
-    };
-  }, [isOpen, containerRef]);
 
   const getShadowClasses = (placement: DrawerPlacement) => {
     const shadows = {
@@ -128,7 +105,7 @@ export function BaseDrawer({ containerRef }: BaseDrawerProps) {
           base: "z-50",
         }}
         hideCloseButton={hideCloseButton}
-        isDismissable={false}
+        isDismissable={isDismissable}
         isOpen={isOpen}
         motionProps={drawerMotionProps}
         placement={placement}

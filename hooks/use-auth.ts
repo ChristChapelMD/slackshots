@@ -45,6 +45,7 @@ export function useAuth(): UseAuthReturn {
     try {
       const { data, error } = await authClient.signIn.social({
         provider: "slack",
+        callbackURL: "/dashboard",
       });
 
       if (error) {

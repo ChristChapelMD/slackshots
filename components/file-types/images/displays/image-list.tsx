@@ -16,7 +16,9 @@ export default function ImageListDisplay({ item }: ImageListDisplayProps) {
   const [hasError, setHasError] = useState(false);
 
   const providerFileId = item.uploads?.[0]?.providerFileId;
-  const imageUrl = providerFileId ? `/api/files/${providerFileId}` : null;
+  const imageUrl = providerFileId
+    ? `/api/files/${providerFileId}?variant=thumbnail`
+    : null;
 
   const isSelectMode = useSelectionStore((state) => state.isSelectMode);
   const selectedFiles = useSelectionStore((state) => state.selectedFiles);
@@ -53,7 +55,9 @@ export default function ImageListDisplay({ item }: ImageListDisplayProps) {
             <span>{formatFileSize(item.fileSize)}</span>
             <span className="mx-2">•</span>
             <Calendar className="mr-1" size={14} />
-            <span>{"formatDate(item.uploadDate)"}</span>
+            <span>
+              {item.createdAt ? formatDate(item.createdAt) : "Unknown"}
+            </span>
           </div>
         </div>
 

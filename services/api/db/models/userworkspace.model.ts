@@ -1,25 +1,29 @@
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
 
-type RoleEnum = "owner" | "member";
+export type WorkspaceRole = "owner" | "member";
 
 export interface UserWorkspaceDTO {
-  workspaceId: string;
   userId: string;
-  role: RoleEnum;
+  workspaceId: string;
+  role: WorkspaceRole;
+  slackUserId: string;
+  verifiedAt: Date;
 }
 
 interface IUserWorkspace extends UserWorkspaceDTO, Document {}
 
 const UserWorkspaceSchema = new Schema<IUserWorkspace>(
   {
-    workspaceId: { type: String, required: true },
     userId: { type: String, required: true },
+    workspaceId: { type: String, required: true },
     role: {
       type: String,
       enum: ["owner", "member"],
-      required: true,
       default: "member",
+      required: true,
     },
+    slackUserId: { type: String, required: true },
+    verifiedAt: { type: Date, default: Date.now, required: true },
   },
   { timestamps: true },
 );

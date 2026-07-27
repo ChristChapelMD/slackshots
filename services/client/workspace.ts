@@ -1,6 +1,10 @@
 import { WorkspaceDTO } from "@/services/api/db/models/workspace.model";
 
-export async function fetchCurrentWorkspace(): Promise<WorkspaceDTO> {
+interface CurrentWorkspaceResponse {
+  workspace: WorkspaceDTO | null;
+}
+
+export async function fetchCurrentWorkspace(): Promise<WorkspaceDTO | null> {
   const response = await fetch("/api/workspace/current", {
     method: "GET",
     credentials: "include",
@@ -10,9 +14,9 @@ export async function fetchCurrentWorkspace(): Promise<WorkspaceDTO> {
     throw new Error("Failed to fetch current workspace");
   }
 
-  const data: WorkspaceDTO = await response.json();
+  const data: CurrentWorkspaceResponse = await response.json();
 
-  return data;
+  return data.workspace ?? null;
 }
 
 export async function addWorkspace(): Promise<{

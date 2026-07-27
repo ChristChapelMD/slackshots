@@ -14,7 +14,11 @@ export async function createOrUpdateWorkspace(
       { workspaceId: data.workspaceId },
       { $set: data },
       { new: true, upsert: true },
-    ).lean<WorkspaceDTO>();
+    ).lean<WorkspaceDTO & { _id: mongoose.Types.ObjectId }>();
+
+    if (!workspace) {
+      return null;
+    }
 
     return workspace;
   } catch (error) {
@@ -23,60 +27,37 @@ export async function createOrUpdateWorkspace(
   }
 }
 
+export async function getDefaultWorkspace(
+  includeSensitive: boolean = false,
+): Promise<(Partial<WorkspaceDTO> & { _id: mongoose.Types.ObjectId }) | null> {
+  await dbConnect();
+
+  try {
+    const projection = includeSensitive ? {} : { botToken: 0 };
+
+    const configuredWorkspaceId = process.env.SLACK_WORKSPACE_ID;
+    const filter = configuredWorkspaceId
+      ? { workspaceId: configuredWorkspaceId }
+      : {};
+
+    return await Workspace.findOne(filter, projection)
+      .sort({ updatedAt: -1 })
+      .lean<WorkspaceDTO & { _id: mongoose.Types.ObjectId }>();
+  } catch (error) {
+    console.error("Failed to get default workspace:", error);
+    throw new Error("Workspace retrieval failed");
+  }
+}
+
 export async function getWorkspaceBySlackId(
-  slackWorkspaceId: string,
+  workspaceId: string,
   includeSensitive: boolean = false,
-): Promise<Partial<WorkspaceDTO> & { _id: mongoose.Types.ObjectId }> {
+): Promise<(Partial<WorkspaceDTO> & { _id: mongoose.Types.ObjectId }) | null> {
   await dbConnect();
 
-  try {
-    const projection = includeSensitive ? {} : { botToken: 0 };
-    const workspace = await Workspace.findOne(
-      { workspaceId: slackWorkspaceId },
-      projection,
-    ).lean<WorkspaceDTO & { _id: mongoose.Types.ObjectId }>();
+  const projection = includeSensitive ? {} : { botToken: 0 };
 
-    if (!workspace) {
-      throw new Error(`Workspace with Slack ID ${slackWorkspaceId} not found.`);
-    }
-
-    return workspace;
-  } catch (error) {
-    console.error("Failed to get workspace by Slack ID:", error);
-    throw new Error("Workspace retrieval by Slack ID failed");
-  }
-}
-
-export async function getWorkspaceByDocumentId(
-  documentId: string | mongoose.Types.ObjectId,
-  includeSensitive: boolean = false,
-): Promise<Partial<WorkspaceDTO> & { _id: mongoose.Types.ObjectId }> {
-  await dbConnect();
-
-  try {
-    const projection = includeSensitive ? {} : { botToken: 0 };
-    const workspace = await Workspace.findById(documentId, projection).lean<
-      WorkspaceDTO & { _id: mongoose.Types.ObjectId }
-    >();
-
-    if (!workspace) {
-      throw new Error(`Workspace with document ID ${documentId} not found.`);
-    }
-
-    return workspace;
-  } catch (error) {
-    console.error("Failed to get workspace by document ID:", error);
-    throw new Error("Workspace retrieval by document ID failed");
-  }
-}
-
-export async function listAllWorkspaces(): Promise<Array<WorkspaceDTO | null>> {
-  await dbConnect();
-
-  try {
-    return await Workspace.find({}).lean<WorkspaceDTO[]>();
-  } catch (error) {
-    console.error("Failed to list workspaces:", error);
-    throw new Error("Workspace listing failed");
-  }
+  return Workspace.findOne({ workspaceId }, projection).lean<
+    WorkspaceDTO & { _id: mongoose.Types.ObjectId }
+  >();
 }

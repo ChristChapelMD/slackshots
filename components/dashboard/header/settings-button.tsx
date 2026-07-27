@@ -1,13 +1,19 @@
 "use client";
-import { useRef } from "react";
+import { lazy, Suspense, useRef } from "react";
 import { Button } from "@heroui/button";
 import { Gear } from "@phosphor-icons/react";
 import { Tooltip } from "@heroui/tooltip";
 
 import { TextureContainer } from "@/components/ui/texture-container";
 import { useDrawerStore } from "@/stores/drawer-store";
-import { SettingsDrawer } from "@/components/drawers/dashboard/settings-drawer";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useUploadProcessStore } from "@/stores/upload-process-store";
+
+const SettingsDrawer = lazy(() =>
+  import("@/components/drawers/dashboard/settings-drawer").then((module) => ({
+    default: module.SettingsDrawer,
+  })),
+);
 
 export function SettingsButton() {
   const isMobile = useMediaQuery("(max-width: 768px)");
@@ -16,6 +22,7 @@ export function SettingsButton() {
   const drawerId = useDrawerStore((state) => state.drawerId);
   const openDrawer = useDrawerStore((state) => state.openDrawer);
   const closeDrawer = useDrawerStore((state) => state.closeDrawer);
+  const isUploading = useUploadProcessStore((state) => state.isUploading);
 
   const isSettingsDrawerOpen = isOpen && drawerId === "settings";
 
@@ -30,16 +37,27 @@ export function SettingsButton() {
     if (isSettingsDrawerOpen) {
       closeDrawer();
     } else {
-      openDrawer("settings", <SettingsDrawer />, {
-        title: "Settings",
-        placement: isMobile ? "bottom" : "right",
-        size: "md",
-        backdrop: "blur",
-      });
+      openDrawer(
+        "settings",
+        <Suspense
+          fallback={
+            <div className="h-64 animate-pulse rounded-xl bg-zinc-200 dark:bg-zinc-700" />
+          }
+        >
+          <SettingsDrawer />
+        </Suspense>,
+        {
+          title: "Settings",
+          placement: isMobile ? "bottom" : "right",
+          size: "md",
+          backdrop: "blur",
+        },
+      );
     }
   };
 
-  const isDisabled = (isOpen && !isSettingsDrawerOpen) || isAnimating;
+  const isDisabled =
+    isUploading || (isOpen && !isSettingsDrawerOpen) || isAnimating;
 
   return (
     <TextureContainer>
