@@ -22,12 +22,19 @@ fi
 echo "Starting cloudflared tunnel: ${TUNNEL_NAME}"
 cloudflared tunnel run "${TUNNEL_NAME}" &
 TUNNEL_PID=$!
+npm run index:worker &
+INDEXER_PID=$!
 
 cleanup() {
   if kill -0 "${TUNNEL_PID}" >/dev/null 2>&1; then
     echo
     echo "Stopping cloudflared tunnel..."
     kill "${TUNNEL_PID}" >/dev/null 2>&1 || true
+  fi
+  if kill -0 "${INDEXER_PID}" >/dev/null 2>&1; then
+    echo
+    echo "Stopping SlackShots indexer..."
+    kill "${INDEXER_PID}" >/dev/null 2>&1 || true
   fi
 }
 

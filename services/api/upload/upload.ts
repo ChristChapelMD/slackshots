@@ -10,6 +10,8 @@ import {
 } from "../db/operations/file.operation";
 import { uploadFiles } from "../integrations/slack/upload";
 
+import { enqueueImageFile } from "@/services/indexing/indexing-queue";
+
 type Provider = "slack";
 
 interface Credentials {
@@ -95,31 +97,31 @@ export async function processAndUpload(
     }
 
     const linkCount = Math.min(fileRecords.length, slackFileResponses.length);
-    const linkedTotal = await addUploadsToRecords(
-      Array.from({ length: linkCount }).map((_, index) => {
-        const record = fileRecords[index];
-        const slackFile = slackFileResponses[index];
+    const linkedUploads = Array.from({ length: linkCount }).map((_, index) => {
+      const record = fileRecords[index];
+      const slackFile = slackFileResponses[index];
 
-        const providerFileUrl =
-          slackFile.url_private || slackFile.url || "missing-url";
+      const providerFileUrl =
+        slackFile.url_private || slackFile.url || "missing-url";
 
-        return {
-          fileRecordId: record._id,
-          providerUpload: {
-            provider: "slack",
-            providerFileId: slackFile.id,
-            providerFileUrl,
-            providerThumbnailUrl: slackFile.thumbnailUrl || undefined,
-          },
-          metadata: {
-            width: slackFile.width,
-            height: slackFile.height,
-            mimetype: slackFile.mimetype,
-            providerSize: slackFile.size,
-          },
-        };
-      }),
-    );
+      return {
+        fileRecordId: record._id,
+        providerUpload: {
+          provider: "slack",
+          providerFileId: slackFile.id,
+          providerFileUrl,
+          providerThumbnailUrl: slackFile.thumbnailUrl || undefined,
+        },
+        metadata: {
+          width: slackFile.width,
+          height: slackFile.height,
+          mimetype: slackFile.mimetype,
+          providerSize: slackFile.size,
+          channelIds: [channel],
+        },
+      };
+    });
+    const linkedTotal = await addUploadsToRecords(linkedUploads);
 
     if (linkedTotal === 0) {
       throw new Error("No uploaded Slack files were linked to app records.");
@@ -140,6 +142,19 @@ export async function processAndUpload(
 
       console.warn(
         `[Upload] Linked ${linkedTotal}/${fileRecords.length} files. Slack returned ${slackFileResponses.length}.`,
+      );
+    }
+
+    const enqueueResults = await Promise.allSettled(
+      linkedUploads.map(({ fileRecordId }) => enqueueImageFile(fileRecordId)),
+    );
+    const enqueueFailures = enqueueResults.filter(
+      (result) => result.status === "rejected",
+    ).length;
+
+    if (enqueueFailures) {
+      console.warn(
+        `[Indexing] ${enqueueFailures}/${linkedUploads.length} newly uploaded files were not queued. The backfill command can repair them.`,
       );
     }
 

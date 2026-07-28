@@ -22,7 +22,7 @@ export function GridDensityToggle() {
   return (
     <>
       <div className="lg:block">
-        <TextureContainer className="ml-24">
+        <TextureContainer>
           <ButtonGroup
             className="bg-zinc-200 dark:bg-zinc-700 rounded-xl"
             variant="shadow"

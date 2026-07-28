@@ -39,9 +39,9 @@ export async function getFileMetadata(
   return {
     providerFileUrl: file.url_private || file.permalink || "",
     providerThumbnailUrl:
+      file.thumb_720 ||
       file.thumb_480 ||
       file.thumb_360 ||
-      file.thumb_720 ||
       file.thumb_160 ||
       file.thumb_80 ||
       "",

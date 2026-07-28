@@ -12,6 +12,7 @@ import {
 } from "@/services/api/db/operations/file.operation";
 import { toObjectId } from "@/services/api/db/utils";
 import { deleteFile as deleteSlackFile } from "@/services/api/integrations/slack/files";
+import { deleteIndexingDataForFiles } from "@/services/indexing/indexing-queue";
 
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
@@ -147,6 +148,7 @@ export async function DELETE(request: NextRequest) {
         ),
     );
 
+    await deleteIndexingDataForFiles(workspace._id, validIds);
     const deletedCount = await deleteFilesForWorkspace(validIds, workspace._id);
 
     return NextResponse.json({ deletedCount });

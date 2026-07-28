@@ -18,6 +18,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useUIStore } from "@/stores/ui-store";
 import { useDrawerStore } from "@/stores/drawer-store";
+import { IndexingSettings } from "@/components/drawers/dashboard/indexing-settings";
 
 type ThemeChoice = "light" | "dark" | "system";
 type GridDensity = "lo" | "md" | "hi";
@@ -117,6 +118,10 @@ export function SettingsDrawer() {
           ) : null}
         </div>
       </section>
+
+      <Divider />
+
+      <IndexingSettings />
 
       <Divider />
 

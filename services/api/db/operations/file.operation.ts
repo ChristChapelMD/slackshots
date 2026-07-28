@@ -57,7 +57,7 @@ export async function addUploadsToRecords(
 
   if (!uploads.length) return 0;
 
-  const result = await File.bulkWrite(
+  const operations: mongoose.AnyBulkWriteOperation<FileRecordDTO>[] =
     uploads.map(({ fileRecordId, providerUpload, metadata }) => ({
       updateOne: {
         filter: { _id: fileRecordId },
@@ -69,9 +69,8 @@ export async function addUploadsToRecords(
           },
         },
       },
-    })),
-    { ordered: true },
-  );
+    }));
+  const result = await File.bulkWrite(operations, { ordered: true });
 
   return result.modifiedCount;
 }

@@ -2,12 +2,14 @@
 
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Button } from "@heroui/button";
 import { Modal, ModalContent } from "@heroui/modal";
 import {
   ArrowCounterClockwise,
+  CaretLeft,
+  CaretRight,
   DownloadSimple,
   ImageBroken,
   MagnifyingGlassMinus,
@@ -16,6 +18,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { useFileModalStore } from "@/stores/file-modal-store";
+import { useSearchStore } from "@/stores/search-store";
 import { useFileDownload } from "@/hooks/use-file-download";
 import { formatDate, formatFileSize } from "@/lib/utils/format-utils";
 import { cn } from "@/lib/utils";
@@ -40,7 +43,13 @@ const ZOOM_STEP = 0.5;
 
 export function FileModal({ containerRef }: FileModalProps) {
   const item = useFileModalStore((state) => state.item);
+  const items = useFileModalStore((state) => state.items);
+  const currentIndex = useFileModalStore((state) => state.currentIndex);
+  const returnToSearch = useFileModalStore((state) => state.returnToSearch);
   const closeFile = useFileModalStore((state) => state.closeFile);
+  const showPrevious = useFileModalStore((state) => state.showPrevious);
+  const showNext = useFileModalStore((state) => state.showNext);
+  const resumeSearch = useSearchStore((state) => state.resumeSearch);
   const { downloadSingleFile } = useFileDownload();
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
@@ -72,6 +81,17 @@ export function FileModal({ containerRef }: FileModalProps) {
   const height = item?.metadata?.height || naturalSize?.height || 1200;
   const previewHasFailed =
     !fullResolutionUrl || (thumbnailHasError && fullResolutionHasError);
+  const hasPrevious = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < items.length - 1;
+
+  const handleClose = () => {
+    const shouldResumeSearch = returnToSearch;
+
+    closeFile();
+    if (shouldResumeSearch) {
+      window.setTimeout(resumeSearch, 0);
+    }
+  };
 
   useLayoutEffect(() => {
     if (!containerRef.current) return;
@@ -172,6 +192,35 @@ export function FileModal({ containerRef }: FileModalProps) {
 
     return () => stage.removeEventListener("wheel", handleNativeWheel);
   }, [canvasSize.height, canvasSize.width, item, position.x, position.y, zoom]);
+
+  useEffect(() => {
+    if (!item) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      if (event.key === "ArrowLeft" && hasPrevious) {
+        event.preventDefault();
+        showPrevious();
+      }
+      if (event.key === "ArrowRight" && hasNext) {
+        event.preventDefault();
+        showNext();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hasNext, hasPrevious, item, showNext, showPrevious]);
 
   if (!isPortalReady || !containerRef.current) {
     return null;
@@ -280,7 +329,7 @@ export function FileModal({ containerRef }: FileModalProps) {
       shadow="none"
       size="full"
       onOpenChange={(open) => {
-        if (!open) closeFile();
+        if (!open) handleClose();
       }}
     >
       <ModalContent
@@ -303,7 +352,7 @@ export function FileModal({ containerRef }: FileModalProps) {
             target instanceof Element &&
             !target.closest("[data-file-viewer-content]")
           ) {
-            closeFile();
+            handleClose();
           }
         }}
       >
@@ -433,6 +482,33 @@ export function FileModal({ containerRef }: FileModalProps) {
               </div>
 
               <div className="ml-1.5 flex shrink-0 items-center gap-0.5 border-l border-zinc-200 pl-1.5 dark:border-zinc-700">
+                {items.length > 1 ? (
+                  <div className="flex items-center rounded-md bg-zinc-100 dark:bg-zinc-800">
+                    <Button
+                      isIconOnly
+                      aria-label="Previous image"
+                      isDisabled={!hasPrevious}
+                      size="sm"
+                      variant="light"
+                      onPress={showPrevious}
+                    >
+                      <CaretLeft size={18} />
+                    </Button>
+                    <span className="min-w-12 text-center text-[11px] font-medium tabular-nums text-zinc-600 dark:text-zinc-300">
+                      {currentIndex + 1} / {items.length}
+                    </span>
+                    <Button
+                      isIconOnly
+                      aria-label="Next image"
+                      isDisabled={!hasNext}
+                      size="sm"
+                      variant="light"
+                      onPress={showNext}
+                    >
+                      <CaretRight size={18} />
+                    </Button>
+                  </div>
+                ) : null}
                 <div className="flex items-center rounded-md bg-zinc-100 dark:bg-zinc-800">
                   <Button
                     isIconOnly
@@ -484,7 +560,7 @@ export function FileModal({ containerRef }: FileModalProps) {
                   aria-label="Close image preview"
                   size="sm"
                   variant="light"
-                  onPress={closeFile}
+                  onPress={handleClose}
                 >
                   <X size={18} />
                 </Button>
