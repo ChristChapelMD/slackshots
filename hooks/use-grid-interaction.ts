@@ -6,7 +6,7 @@ import { FileItem } from "@/types/service-types/file-service";
 import { useUploadProcessStore } from "@/stores/upload-process-store";
 import { useFileModalStore } from "@/stores/file-modal-store";
 
-export function useGridItemInteraction(item: FileItem) {
+export function useGridItemInteraction(item: FileItem, items: FileItem[]) {
   const [isHovered, setIsHovered] = useState(false);
 
   const isSelectMode = useSelectionStore((state) => state.isSelectMode);
@@ -37,9 +37,9 @@ export function useGridItemInteraction(item: FileItem) {
     if (isSelectMode) {
       toggleFileSelection(item);
     } else {
-      openFile(item);
+      openFile(item, { items, source: "grid" });
     }
-  }, [isSelectMode, toggleFileSelection, item, openFile]);
+  }, [isSelectMode, toggleFileSelection, item, items, openFile]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

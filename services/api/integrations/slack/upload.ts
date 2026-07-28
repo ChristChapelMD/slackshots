@@ -92,10 +92,11 @@ export async function uploadFiles(
             "",
           name: file.title || file.name || file.file?.title || file.file?.name,
           thumbnailUrl:
+            file.thumb_720 ||
             file.thumb_480 ||
             file.thumb_360 ||
-            file.thumb_720 ||
             file.thumb_160 ||
+            file.file?.thumb_720 ||
             file.file?.thumb_480 ||
             file.file?.thumb_360 ||
             "",

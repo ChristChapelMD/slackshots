@@ -133,7 +133,7 @@ export function GridView({
               }}
             >
               {rows[virtualRow.index]?.map((item) => (
-                <GridItem key={item._id} item={item} />
+                <GridItem key={item._id} item={item} items={files} />
               ))}
             </div>
           </div>

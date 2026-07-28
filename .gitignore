@@ -31,6 +31,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local machine-learning model cache
+/.cache/transformers
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

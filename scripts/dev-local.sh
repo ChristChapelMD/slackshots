@@ -8,6 +8,19 @@ echo "Starting SlackShots locally..."
 echo "App URL: http://localhost:3000"
 echo
 
+npm run index:worker &
+INDEXER_PID=$!
+
+cleanup() {
+  if kill -0 "${INDEXER_PID}" >/dev/null 2>&1; then
+    echo
+    echo "Stopping SlackShots indexer..."
+    kill "${INDEXER_PID}" >/dev/null 2>&1 || true
+  fi
+}
+
+trap cleanup EXIT INT TERM
+
 BETTER_AUTH_URL="http://localhost:3000" \
   LOCAL_DEV_AUTH_BYPASS="true" \
   NEXT_PUBLIC_LOCAL_DEV_AUTH_BYPASS="true" \

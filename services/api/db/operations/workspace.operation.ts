@@ -61,3 +61,16 @@ export async function getWorkspaceBySlackId(
     WorkspaceDTO & { _id: mongoose.Types.ObjectId }
   >();
 }
+
+export async function getWorkspaceById(
+  workspaceId: mongoose.Types.ObjectId,
+  includeSensitive: boolean = false,
+): Promise<(Partial<WorkspaceDTO> & { _id: mongoose.Types.ObjectId }) | null> {
+  await dbConnect();
+
+  const projection = includeSensitive ? {} : { botToken: 0 };
+
+  return Workspace.findById(workspaceId, projection).lean<
+    WorkspaceDTO & { _id: mongoose.Types.ObjectId }
+  >();
+}

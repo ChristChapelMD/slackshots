@@ -21,6 +21,13 @@ const FileModal = dynamic(
     ),
   { ssr: false },
 );
+const SearchPalette = dynamic(
+  () =>
+    import("@/components/modals/dashboard/search-palette").then(
+      (module) => module.SearchPalette,
+    ),
+  { ssr: false },
+);
 
 export function MainContentContainer() {
   const { files, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
@@ -101,6 +108,7 @@ export function MainContentContainer() {
           </>
         )}
         <BaseDrawer containerRef={mainContainerRef} />
+        <SearchPalette containerRef={mainContainerRef} />
         <FileModal containerRef={mainContainerRef} />
       </main>
       {isFetchingNextPage ? (

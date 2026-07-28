@@ -8,14 +8,22 @@ import { ViewSelectedButton } from "@/components/dashboard/header/select-mode/vi
 import { SelectActionButtons } from "@/components/dashboard/header/select-mode/select-action-buttons";
 import { GridDensityToggle } from "@/components/dashboard/header/grid-density/grid-density-toggle";
 import { SettingsButton } from "@/components/dashboard/header/settings-button";
+import { SemanticSearchButton } from "@/components/dashboard/header/semantic-search-button";
 import { useMediaQuery } from "@/hooks/use-media-query";
 
 export function Header() {
   const isMobile = useMediaQuery("(max-width: 768px)");
 
   return (
-    <header className="flex items-center justify-between px-4 h-16 rounded-t-xl border-zinc-700/25">
-      <div className="flex items-center">
+    <header
+      className="h-16 w-full rounded-t-xl border-zinc-700/25 px-4"
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
+      <div className="flex shrink-0 flex-row items-center">
         <Link className="flex items-center" href="/">
           <Image
             alt="SlackShots Logo"
@@ -35,7 +43,13 @@ export function Header() {
         )}
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex min-w-0 flex-1 flex-row justify-center px-4">
+        <div className="w-full max-w-xl">
+          <SemanticSearchButton />
+        </div>
+      </div>
+
+      <div className="ml-auto flex shrink-0 flex-row items-center gap-2">
         {!isMobile && (
           <>
             <ViewSelectedButton />

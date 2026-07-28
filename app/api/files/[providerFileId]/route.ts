@@ -1,3 +1,5 @@
+import type mongoose from "mongoose";
+
 import { NextResponse } from "next/server";
 
 import {
@@ -12,20 +14,10 @@ import {
   fetchFile,
   getFileMetadata,
 } from "@/services/api/integrations/slack/files";
+import { isSlackFileUnavailableError } from "@/services/api/integrations/slack/errors";
+import { markImageIndexStale } from "@/services/indexing/index-availability";
 
 const MAX_FETCH_ATTEMPTS = 2;
-
-function isRetryableFetchError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  const cause = (error as any)?.cause;
-  const code = (cause as any)?.code;
-
-  return (
-    message.toLowerCase().includes("terminated") ||
-    message.toLowerCase().includes("socket") ||
-    code === "UND_ERR_SOCKET"
-  );
-}
 
 export async function GET(
   request: Request,
@@ -33,6 +25,10 @@ export async function GET(
 ) {
   const params = await context.params;
   const { providerFileId } = params;
+  let indexScope: {
+    workspaceId: mongoose.Types.ObjectId;
+    fileRecordId: mongoose.Types.ObjectId;
+  } | null = null;
 
   try {
     const { workspace } = await requireWorkspaceAccess(request, true);
@@ -42,6 +38,10 @@ export async function GET(
     if (!fileRecord) {
       return new NextResponse("Not Found", { status: 404 });
     }
+    indexScope = {
+      workspaceId: workspace._id,
+      fileRecordId: fileRecord._id,
+    };
 
     let slackUpload = fileRecord.uploads.find(
       (upload: any) => upload.provider === "slack",
@@ -77,7 +77,7 @@ export async function GET(
       }
     }
 
-    const providerUrl =
+    let providerUrl =
       (useThumbnail && slackUpload.providerThumbnailUrl) ||
       slackUpload.providerFileUrl;
 
@@ -97,10 +97,28 @@ export async function GET(
 
         break;
       } catch (error) {
-        const shouldRetry =
-          attempt < MAX_FETCH_ATTEMPTS - 1 && isRetryableFetchError(error);
+        if (attempt < MAX_FETCH_ATTEMPTS - 1) {
+          const providerMetadata = await getFileMetadata(
+            providerFileId,
+            workspace.botToken as string,
+          );
+          const updatedRecord = await updateProviderFileMetadata(
+            fileRecord._id,
+            providerFileId,
+            providerMetadata,
+          );
+          const refreshedUpload = updatedRecord?.uploads.find(
+            (upload: any) => upload.provider === "slack",
+          );
+          const refreshedUrl =
+            (useThumbnail && refreshedUpload?.providerThumbnailUrl) ||
+            refreshedUpload?.providerFileUrl;
 
-        if (shouldRetry) {
+          if (!refreshedUrl) {
+            throw error;
+          }
+
+          providerUrl = refreshedUrl;
           continue;
         }
 
@@ -149,6 +167,18 @@ export async function GET(
   } catch (error) {
     if (error instanceof AuthorizationError) {
       return new NextResponse(error.message, { status: error.status });
+    }
+    if (isSlackFileUnavailableError(error)) {
+      if (indexScope) {
+        await markImageIndexStale({
+          ...indexScope,
+          errorCode: "SLACK_FILE_UNAVAILABLE",
+        }).catch(() => undefined);
+      }
+
+      return new NextResponse("This image is no longer available from Slack.", {
+        status: 410,
+      });
     }
     console.error("[File Proxy Error]:", error);
 

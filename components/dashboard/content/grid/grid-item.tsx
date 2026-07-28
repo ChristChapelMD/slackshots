@@ -10,7 +10,7 @@ import { GridItemProps } from "@/types/grid-types";
 import { FileRenderer } from "@/components/file-types/file-renderer";
 import { useGridItemInteraction } from "@/hooks/use-grid-interaction";
 
-export default memo(function GridItem({ item }: GridItemProps) {
+export default memo(function GridItem({ item, items }: GridItemProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -22,7 +22,7 @@ export default memo(function GridItem({ item }: GridItemProps) {
     handleMouseLeave,
     handleItemInteraction,
     handleKeyDown,
-  } = useGridItemInteraction(item);
+  } = useGridItemInteraction(item, items);
 
   return (
     <div
